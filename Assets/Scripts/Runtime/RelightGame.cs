@@ -219,7 +219,7 @@ namespace Relight
             var rates = world.CalculateRates();
             subtitle.text = "SCRAP " + Format(state.Scrap) + "  |  RESTORED " +
                 (100.0 * state.Restoration / WorldModel.TargetForRegion(state.Region)).ToString("0") +
-                "%\\n+" + rates.ScrapPerSecond.ToString("0.0") + "/s   |   POWER " +
+                "%\n+" + rates.ScrapPerSecond.ToString("0.0") + "/s   |   POWER " +
                 rates.ConnectedConsumers + "/" + rates.PowerCapacity;
             RefreshPlanet();
             var connected = world.Connected();
