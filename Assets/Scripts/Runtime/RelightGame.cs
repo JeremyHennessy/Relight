@@ -69,6 +69,8 @@ namespace Relight
             double dt = Math.Min(Time.unscaledDeltaTime, 0.25f);
             int previousRegion = world.State.Region;
             world.Tick(dt);
+            if (networkEffects != null)
+                networkEffects.Animate(Time.unscaledTime);
             if (world.State.Region > previousRegion)
                 CelebrateRestoration(world.State.Region - previousRegion);
             if (regionCelebrationSeconds > 0f && headerBackground != null)
@@ -338,7 +340,7 @@ namespace Relight
             RefreshPlanet();
             var connected = world.Connected();
             if (networkEffects != null)
-                networkEffects.UpdateNetwork(connected, Time.unscaledTime);
+                networkEffects.UpdateNetwork(connected);
             int suggested = world.SuggestedFirstSessionTile();
             var icons = new [] { "+", "CORE", "LINK", "MINE", "LIFE", "GEN" };
             for (int i = 0; i < tiles.Length; i++)
