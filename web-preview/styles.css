@@ -22,6 +22,15 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
 @media(max-width:370px){.build-badge{display:none}.world-intro h1{font-size:31px}.tool-icon{width:38px;height:38px}.tool-copy small{font-size:9px}.resource-label{font-size:7px}.mission-banner{padding:11px}.tile .tile-name{font-size:6px}.planet-scene{min-height:265px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 
+/* On phones, transient action feedback sits at the top edge rather than over
+   the bottom rows of the construction grid. It never blocks pointer input. */
+@media(max-width:650px){
+  .toast{top:calc(12px + env(safe-area-inset-top,0px));bottom:auto;
+    max-width:min(calc(100vw - 24px),360px);min-width:0;padding:11px 15px;
+    font-size:12px;transform:translate(-50%,-110px)}
+  .toast.visible{transform:translate(-50%,0)}
+}
+
 /* Compact machine controls live beside the grid on phones. Desktop retains
    the full descriptive machine list, avoiding duplicated visual clutter. */
 .quick-tools{display:none}
