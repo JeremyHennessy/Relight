@@ -19,12 +19,16 @@ Primary sources:
 - Unity activation methods: https://docs.unity.com/en-us/engine/6000.3/manual/get-started/install-and-upgrade/licenses-and-activation/license-activation-methods
 - Potentially conflicting GameCI instructions: https://game.ci/docs/github/activation/
 
+## Current authoritative build instructions
+
+**This older guide is superseded for cloud version selection by [Unity 6.3 migration](UNITY_6_3_MIGRATION.md).** The earlier 6000.1.x branch was removed from UBA. Use `migration/unity-6000.3-lts` and verify the exact 6000.3.27f1 editor is available in Unity Build Automation before starting a paid build. Never rely on 6000.1 fallback.
+
 ## Recommended first proof: Windows + Unity Hub
 
 This is the lowest-risk way to verify the actual game without a new password or a guessed license file.
 
 1. Install [Unity Hub](https://unity.com/download) and **sign in using Google as normal**. Check Hub Settings > Licenses to verify Unity Personal is active.
-2. Install **Unity Editor 6000.1.9f1** and the Android Build Support module including SDK/NDK tools and OpenJDK. We preserve the repository's target version until a real import/build proves whether any change is necessary.
+2. Install **Unity Editor 6000.3.27f1** and the Android Build Support module including SDK/NDK tools and OpenJDK. We preserve the repository's target version until a real import/build proves whether any change is necessary.
 3. From PowerShell, clone the project and select the current reviewable branch:
 
    ```powershell
@@ -41,7 +45,7 @@ This is the lowest-risk way to verify the actual game without a new password or 
    powershell -ExecutionPolicy Bypass -File .\scripts\verify-unity-windows.ps1
    ```
 
-   The script attempts 17 Unity EditMode tests and builds `Builds/Relight-dev.apk`. Inspect `Builds/verification/` logs and XML. The script is **unverified in a real Editor**; a failed first run is evidence to investigate, not permission to claim a working APK.
+   The script attempts 18 Unity EditMode tests and builds `Builds/Relight-dev.apk`. Inspect `Builds/verification/` logs and XML. The script is **unverified in a real Editor**; a failed first run is evidence to investigate, not permission to claim a working APK.
 7. If the new APK is produced, install it on a real Android phone and verify the network, UI scaling, REVIVE, offline progression and save recovery. Capture screenshots for first visual approval.
 
 ## Cloud alternative: Unity Build Automation
