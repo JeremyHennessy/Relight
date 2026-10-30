@@ -77,7 +77,11 @@ namespace Relight.Tests
             state.Restoration = 99;
             var game = new WorldModel(state);
             game.Tick(10);
+            Assert.IsTrue(game.IsRegionReady);
+            Assert.AreEqual(0, game.State.Region);
+            Assert.IsTrue(game.ClaimRegion());
             Assert.AreEqual(1, game.State.Region);
+            Assert.IsFalse(game.ClaimRegion());
         }
 
         [Test]
@@ -147,7 +151,29 @@ namespace Relight.Tests
             Assert.IsTrue(game.Place(7, Machine.Extractor));
             Assert.AreEqual(FirstSessionGoal.RestoreFirstRegion, game.GetFirstSessionGoal());
             game.Tick(150);
+            Assert.IsTrue(game.IsRegionReady);
+            Assert.IsTrue(game.ClaimRegion());
             Assert.AreEqual(FirstSessionGoal.ContinueExploring, game.GetFirstSessionGoal());
+        }
+
+        [Test]
+        public void OfflineReturnPreparesOnlyOneClaimableMilestone()
+        {
+            var state = WorldState.NewWorld();
+            state.SavedAtUnix = 100;
+            var game = new WorldModel(state);
+            game.ApplyOffline(100 + WorldModel.OfflineCapSeconds);
+            Assert.AreEqual(0, game.State.Region);
+            Assert.IsTrue(game.IsRegionReady);
+            Assert.AreEqual(WorldModel.TargetForRegion(0), game.State.Restoration, 0.001);
+
+            double before = game.State.Scrap;
+            game.Tick(100);
+            Assert.Greater(game.State.Scrap, before);
+            Assert.AreEqual(WorldModel.TargetForRegion(0), game.State.Restoration, 0.001);
+            Assert.IsTrue(game.ClaimRegion());
+            Assert.IsFalse(game.ClaimRegion());
+            Assert.AreEqual(1, game.State.Region);
         }
 
         [Test]
