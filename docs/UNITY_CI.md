@@ -2,6 +2,8 @@
 
 **2026-10-30 correction:** The original Unity CI onboarding guidance assumed a Unity Personal `.ulf` file and a standalone Unity password. That is not reliably compatible with current Unity Personal **named-user** licensing and Google sign-in.
 
+**Version update (October 30, 2026):** Relight moved to Unity 6000.3.27f1 LTS on `migration/unity-6000.3-lts` due to confirmed UBA removal of 6000.1.9f1. See [migration checklist](UNITY_6_3_MIGRATION.md). GameCI remains optional and gated, Unity Build Automation is the already connected primary cloud builder.
+
 ## Verification levels
 
 - **Standalone Core verification:** Automatically compiles the Unity-free gameplay model and executes source-level assertions, Unity C# syntax parsing and JSON configuration checks. It does **not** run Unity or produce an APK.
@@ -23,7 +25,7 @@ Both GameCI workflows have an additional guard: `RELIGHT_GAMECI_LICENSE_CONFIRME
 ## Suggested first successful Unity verification
 
 1. Sign into Unity Hub using Google and confirm Personal activation.
-2. Open the checked-out project using Unity 6000.1.9f1, run Unity's EditMode tests and inspect the scene.
+2. Open the checked-out project using Unity 6000.3.27f1, run Unity's EditMode tests and inspect the scene.
 3. Run `scripts/verify-unity-windows.ps1` after closing any open Editor instance.
 4. Inspect new XML results, logs, APK output, and physical-device behavior.
 5. Only after that, choose whether to configure a cloud build (Unity Build Automation may be preferable).

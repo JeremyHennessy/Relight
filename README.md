@@ -7,7 +7,7 @@
 One spark brings a dead world back to life. Build an energy network, connect mines and restoration equipment, repair bottlenecks, and watch the planet change as regions recover. Your connected systems earn progress while you are away.
 
 ## Current source
-- Unity `6000.1.9f1` project, C# energy-network core, build tools and edit-mode tests.
+- Unity `6000.3.27f1` project, C# energy-network core, build tools and edit-mode tests.
 - 5×5 network, five build actions, production/consumption, adjacency synergies, power constraints and two upgrade types.
 - Guided first session: boost the LIFE facility, expand the mine network, then tap REVIVE to claim a completed region for free. Build buttons show costs and the recommended tool follows the tutorial mission.
 - Procedurally generated planets with four visual styles, gradual restoration, clouds, city lights and region-completion feedback.
@@ -19,7 +19,7 @@ One spark brings a dead world back to life. Build an energy network, connect min
 - `Assets/Scripts/Core/`: deterministic game economy and state — no Unity dependency.
 - `Assets/Scripts/Runtime/`: portrait UI, interactions, procedural visual generation.
 - `Assets/Editor/`: Unity scene setup and Android development build menu.
-- `Assets/Tests/EditMode/`: Unity-specific EditMode tests (**17 defined**, not yet run in Unity).
+- `Assets/Tests/EditMode/`: Unity-specific EditMode tests (**18 defined**, not yet run in Unity).
 - `verification/`: standalone .NET core and C# syntax validation jobs.
 - `docs/PRODUCT_STRATEGY.md`: long-term gameplay/visual/business direction.
 - `docs/GAME_DESIGN.md`: concrete mechanics and progression plan.
@@ -29,8 +29,12 @@ One spark brings a dead world back to life. Build an energy network, connect min
 
 Unity Personal normally activates in Unity Hub when the account signs in, including Google sign-in. Do **not** assume a modern Personal account has a serial-based `.ulf` file; the earlier GameCI secret guidance has been corrected. For the first real build, use local Unity Hub or review Unity Build Automation before configuring third-party license secrets. See [corrected first build guide](docs/FIRST_UNITY_BUILD.md).
 
+## Unity build version — upgraded October 30, 2026
+
+The initial `6000.1.9f1` editor was removed from Unity Build Automation after October 6, 2026, causing HTTP 500 before any build could start. The migration branch now targets **Unity 6000.3.27f1 LTS**, a released version in a supported LTS family. **Exact cloud-builder patch availability and Unity compilation are not verified yet.** See [migration decision and cloud configuration](docs/UNITY_6_3_MIGRATION.md).
+
 ## Run in Unity
-1. Open repository in **Unity 6000.1.9f1**, using Unity Hub with required modules.
+1. Open repository in **Unity 6000.3.27f1**, using Unity Hub with required modules.
 2. Let packages import. Resolve all Console errors before proceeding.
 3. Select **Relight > Initialize Playable Scene** in the Unity menu.
 4. Open `Assets/Scenes/Relight.unity` and press Play.

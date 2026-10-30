@@ -1,7 +1,7 @@
-# Requires Windows PowerShell 5.1+ and a licensed Unity 6000.1.9f1 install.
+# Requires Windows PowerShell 5.1+ and a licensed Unity 6000.3.27f1 install.
 # Does not upload secrets or modify Unity license activation.
 param(
-    [string]$UnityExe = "C:\Program Files\Unity\Hub\Editor\6000.1.9f1\Editor\Unity.exe",
+    [string]$UnityExe = "C:\Program Files\Unity\Hub\Editor\6000.3.27f1\Editor\Unity.exe",
     [switch]$SkipAndroid
 )
 
@@ -57,7 +57,7 @@ if ($null -eq $testRun) {
 }
 $total = [int]$testRun.total
 $failed = [int]$testRun.failed
-if ($testRun.result -ne "Passed" -or $total -lt 17 -or $failed -ne 0) {
+if ($testRun.result -ne "Passed" -or $total -lt 18 -or $failed -ne 0) {
     throw "Unity EditMode tests incomplete/failed: result=$($testRun.result), total=$total, failed=$failed. Review $testsXml and $testsLog."
 }
 

@@ -6,6 +6,7 @@ on:
       - 'feat/**'
       - 'fix/**'
       - 'build/**'
+      - 'migration/**'
   pull_request:
     branches:
       - main
@@ -28,6 +29,46 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Compile and run standalone core checks
         run: dotnet run --configuration Release --project verification/Relight.CoreChecks/Relight.CoreChecks.csproj
+      - name: Verify Unity LTS project and cloud runner versions match
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          version_text = Path("ProjectSettings/ProjectVersion.txt").read_text(encoding="utf-8")
+          version = next((line.partition(": ")[2].strip() for line in version_text.splitlines()
+                          if line.startswith("m_EditorVersion:")), "")
+          if not version:
+              raise SystemExit("Missing ProjectVersion.txt editor version")
+          # Enforce supported LTS family for this migration, fail on obsolete 6000.1.
+          if not version.startswith("6000.3.") or not version.endswith("f1"):
+              raise SystemExit(f"Unsupported migration editor pin: {version}")
+          revision = next((line for line in version_text.splitlines()
+                           if line.startswith("m_EditorVersionWithRevision:")), "")
+          if version not in revision:
+              raise SystemExit("Editor version/revision mismatch")
+          manifest = json.loads(Path("Packages/manifest.json").read_text(encoding="utf-8"))
+          deps = manifest["dependencies"]
+          if deps.get("com.unity.test-framework") != "1.6.0":
+              raise SystemExit("Unity 6.3 Test Framework package pin is inconsistent")
+          if deps.get("com.unity.ugui") != "2.0.0":
+              raise SystemExit("Unity 6.3 UI package pin is inconsistent")
+          # The first real UBA import failed before compiling scripts because
+          # inputlegacy is not a resolvable Unity 6.3 package. Catch regression.
+          if "com.unity.modules.inputlegacy" in deps:
+              raise SystemExit("Invalid Unity 6.3 package: com.unity.modules.inputlegacy")
+          for name in ("unity-editor-verification.yml", "unity-android-development.yml"):
+              yml = Path(".github/workflows") / name
+              contents = yml.read_text(encoding="utf-8")
+              if f"unityVersion: {version}" not in contents:
+                  raise SystemExit(f"{name} not pinned to {version}")
+              if "RELIGHT_GAMECI_LICENSE_CONFIRMED" not in contents:
+                  raise SystemExit(f"{name} lacks license compatibility guard")
+          helper = Path("scripts/verify-unity-windows.ps1").read_text(encoding="utf-8")
+          if version not in helper:
+              raise SystemExit("Windows helper version differs from ProjectVersion.txt")
+          print("Unity LTS version alignment OK", version)
+          print("Actual Unity Editor import and cloud patch inventory NOT validated by this step.")
+          PY
       - name: Parse all Unity C# sources with Roslyn
         run: dotnet run --configuration Release --project verification/Relight.SyntaxChecks/Relight.SyntaxChecks.csproj
       - name: Parse Windows Unity verifier script
