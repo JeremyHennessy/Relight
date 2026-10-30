@@ -36,10 +36,39 @@ jobs:
           test -s web-preview/favicon.svg
           grep -q 'type="module" src="./app.mjs"' web-preview/index.html
 
+  browser:
+    name: Run actual mobile and desktop Chromium playtest
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Playwright and Chromium (test runner only)
+        run: |
+          npm install --prefix web-preview --no-save --no-package-lock playwright@1.56.1
+          ./web-preview/node_modules/.bin/playwright install --with-deps chromium
+      - name: Test UI in real browser
+        run: |
+          python3 -m http.server 8765 --directory web-preview > /tmp/relight-web-server.log 2>&1 &
+          sleep 2
+          node web-preview/browser-smoke.mjs
+      - name: Keep mobile/desktop screenshots for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relight-web-playtest-screenshots
+          path: |
+            relight-mobile-playtest.png
+            relight-desktop-playtest.png
+          if-no-files-found: ignore
+
   deploy:
     name: Publish Web Playtest to GitHub Pages
     runs-on: ubuntu-latest
-    needs: verify
+    needs: [verify, browser]
     timeout-minutes: 10
     permissions:
       contents: read
