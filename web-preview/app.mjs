@@ -78,14 +78,23 @@ function openGuide(){
   if(typeof welcome.showModal==="function"&&!welcome.open)welcome.showModal();
   else welcome.setAttribute("open","");
 }
-function closeGuide(){
+function closeGuide(startPlaying=false){
   try{localStorage.setItem(FIRST,"yes");}catch(_){}
   if(typeof welcome.close==="function"&&welcome.open)welcome.close();
   else welcome.removeAttribute("open");
+  // The visual planet intro is tall on a phone. After onboarding, put the
+  // mission and its suggested build tile in view instead of hiding gameplay
+  // below the fold. This affects navigation only, never the saved world.
+  if(startPlaying){
+    const reducedMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.querySelector(".mission-banner")?.scrollIntoView({
+      behavior:reducedMotion?"instant":"smooth",block:"start"
+    });
+  }
 }
 $("how-to-play").addEventListener("click",openGuide);
-$("begin").addEventListener("click",closeGuide);
-$("dismiss-help").addEventListener("click",closeGuide);
+$("begin").addEventListener("click",()=>closeGuide(true));
+$("dismiss-help").addEventListener("click",()=>closeGuide(false));
 welcome.addEventListener("cancel",()=>{try{localStorage.setItem(FIRST,"yes");}catch(_){}});
 if(!localStorage.getItem(FIRST))openGuide();
 if(away>2)notice("Welcome back! Your network worked for "+Math.floor(away/60)+" offline minutes.");
