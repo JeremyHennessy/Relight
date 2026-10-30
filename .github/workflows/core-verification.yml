@@ -52,6 +52,10 @@ jobs:
               raise SystemExit("Unity 6.3 Test Framework package pin is inconsistent")
           if deps.get("com.unity.ugui") != "2.0.0":
               raise SystemExit("Unity 6.3 UI package pin is inconsistent")
+          # The first real UBA import failed before compiling scripts because
+          # inputlegacy is not a resolvable Unity 6.3 package. Catch regression.
+          if "com.unity.modules.inputlegacy" in deps:
+              raise SystemExit("Invalid Unity 6.3 package: com.unity.modules.inputlegacy")
           for name in ("unity-editor-verification.yml", "unity-android-development.yml"):
               yml = Path(".github/workflows") / name
               contents = yml.read_text(encoding="utf-8")
