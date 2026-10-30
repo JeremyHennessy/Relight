@@ -11,7 +11,7 @@ Restore a dormant world through understandable power-network decisions, satisfyi
 5. **Small-device clarity:** large tap targets, readable contrast, legible numbers and predictable feedback.
 
 ## Core loop
-Build generators and relay connections -> power extractors -> earn scrap -> power restorers -> restore regions -> receive unlock bonuses -> reinvest in networks.
+Build generators and relay connections -> power extractors -> earn scrap -> power restorers -> fill a region's restoration meter -> **freely REVIVE that region** -> receive unlock bonuses -> reinvest in networks.
 
 ## First vertical slice (implemented as source, unverified in Unity)
 - 5x5 grid, central power core, adjacency-based connectivity.
@@ -23,10 +23,16 @@ Build generators and relay connections -> power extractors -> earn scrap -> powe
 - Animated energy tracks and travelling pulses between connected structures; decorative graphics do not intercept touch input.
 - Grid and energy-overlay dimensions are derived from the same pure, testable responsive layout calculation.
 - Non-blocking first-session missions with suggested placements, plus a region-restored celebration.
+- A full restoration meter pauses further region auto-advancement; players actively claim REVIVE for free. Offline production may prepare one region without skipping the following ones.
+- The correct guided machine is preselected when the next first-session mission begins; build-button labels show each machine's scrap cost.
 - Save fallback to a previous valid snapshot when the primary save fails validation.
 - Mining and power upgrades, increasing region restoration targets.
 - JSON save via PlayerPrefs, capped offline progress, portrait UI.
 - The UI remains a prototype with original procedural planet imagery; no audio. All rendering requires real Unity/device validation.
+
+## Pacing evidence
+
+A starter world previously auto-completed 26 regions after 8 simulated offline hours. The current model caps the unattended milestone at one free, player-claimable region. See [PACING_EVIDENCE.md](PACING_EVIDENCE.md) for actual test-run links, remaining economy risks and required Unity tests.
 
 ## Intended deeper gameplay (NOT IMPLEMENTED)
 - Three biome types with distinct power/resource constraints and visual recovery.

@@ -273,27 +273,51 @@ namespace Relight
             LastMessage = "Network repaired. Progress preserved.";
         }
 
+        public bool IsRegionReady => State.Restoration >= TargetForRegion(State.Region);
+
+        /// <summary>
+        /// A region is a meaningful player-facing milestone, not a silent timer.
+        /// The player can claim this milestone for free; no ads or purchase gate.
+        /// At most one region can become ready while the game is unattended.
+        /// </summary>
+        public bool ClaimRegion()
+        {
+            if (!IsRegionReady)
+            {
+                LastMessage = "This region needs more restoration.";
+                return false;
+            }
+            State.Restoration = 0;
+            State.Region++;
+            State.Scrap += 40 + State.Region * 10;
+            LastMessage = "Region revived! New territory discovered.";
+            return true;
+        }
+
         public void Tick(double seconds)
         {
             if (seconds <= 0 || double.IsNaN(seconds) || double.IsInfinity(seconds)) return;
             seconds = Math.Min(seconds, OfflineCapSeconds);
             var rates = CalculateRates();
             State.Scrap += seconds * rates.ScrapPerSecond;
-            // A restorer can only convert scrap that exists; production and
-            // consumption are accounted for once per tick.
-            double requiredScrap = seconds * rates.ScrapUsedPerSecond;
-            double usedScrap = Math.Min(State.Scrap, requiredScrap);
-            State.Scrap -= usedScrap;
-            if (requiredScrap > 0)
-                State.Restoration += seconds * rates.RestorationPerSecond * (usedScrap / requiredScrap);
-            State.TotalPlayedSeconds += seconds;
-            while (State.Restoration >= TargetForRegion(State.Region))
+
+            // Let miners work while a completed region awaits activation, but
+            // stop consuming restoration materials when the region is ready.
+            // This preserves both resources and the intended return-session gate.
+            double room = Math.Max(0, TargetForRegion(State.Region) - State.Restoration);
+            double desiredRestoration = Math.Min(room, seconds * rates.RestorationPerSecond);
+            if (desiredRestoration > 0 && rates.RestorationPerSecond > 0)
             {
-                State.Restoration -= TargetForRegion(State.Region);
-                State.Region++;
-                State.Scrap += 40 + State.Region * 10;
-                LastMessage = "Region restored! New territory discovered.";
+                double requiredScrap = desiredRestoration *
+                    rates.ScrapUsedPerSecond / rates.RestorationPerSecond;
+                if (requiredScrap > 0)
+                {
+                    double usedScrap = Math.Min(State.Scrap, requiredScrap);
+                    State.Scrap -= usedScrap;
+                    State.Restoration += desiredRestoration * (usedScrap / requiredScrap);
+                }
             }
+            State.TotalPlayedSeconds += seconds;
         }
 
         public static double TargetForRegion(int region) => 100.0 * (1 + region * 0.5);
