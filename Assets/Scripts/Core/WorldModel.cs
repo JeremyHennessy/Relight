@@ -41,6 +41,10 @@ namespace Relight
         public const int Width = 5;
         public const int Height = 5;
         public const int OfflineCapSeconds = 8 * 60 * 60;
+        // Trial balancing rule: the starter offline mine storage covers
+        // 30 minutes of mining. Restoration can still process for 8 hours.
+        // Player telemetry must determine the final storage duration.
+        public const int OfflineScrapProductionCapSeconds = 30 * 60;
         public WorldState State { get; private set; }
         public string LastMessage { get; private set; } = "Reconnect the world.";
 
@@ -296,10 +300,19 @@ namespace Relight
 
         public void Tick(double seconds)
         {
+            Advance(seconds, seconds);
+        }
+
+        // Separates elapsed simulation time from productive mine-storage time.
+        // Active play is unchanged; only offline mining uses the storage cap.
+        private void Advance(double seconds, double miningSeconds)
+        {
             if (seconds <= 0 || double.IsNaN(seconds) || double.IsInfinity(seconds)) return;
             seconds = Math.Min(seconds, OfflineCapSeconds);
+            if (double.IsNaN(miningSeconds) || double.IsInfinity(miningSeconds)) return;
+            miningSeconds = Math.Max(0, Math.Min(seconds, miningSeconds));
             var rates = CalculateRates();
-            State.Scrap += seconds * rates.ScrapPerSecond;
+            State.Scrap += miningSeconds * rates.ScrapPerSecond;
 
             // Let miners work while a completed region awaits activation, but
             // stop consuming restoration materials when the region is ready.
@@ -327,7 +340,7 @@ namespace Relight
             long elapsed = Math.Max(0, nowUnixSeconds - State.SavedAtUnix);
             if (State.SavedAtUnix <= 0) elapsed = 0;
             double applied = Math.Min(elapsed, OfflineCapSeconds);
-            Tick(applied);
+            Advance(applied, Math.Min(applied, OfflineScrapProductionCapSeconds));
             State.SavedAtUnix = nowUnixSeconds;
             return applied;
         }
