@@ -113,6 +113,20 @@ namespace Relight.Tests
         }
 
         [Test]
+        public void FirstSessionGuidesPlayerWithoutForcedActions()
+        {
+            var game = new WorldModel(WorldState.NewWorld());
+            Assert.AreEqual(FirstSessionGoal.ImproveRestoration, game.GetFirstSessionGoal());
+            Assert.AreEqual(19, game.SuggestedFirstSessionTile());
+            Assert.IsTrue(game.Place(19, Machine.Generator));
+            Assert.AreEqual(FirstSessionGoal.ExpandProduction, game.GetFirstSessionGoal());
+            Assert.IsTrue(game.Place(7, Machine.Extractor));
+            Assert.AreEqual(FirstSessionGoal.RestoreFirstRegion, game.GetFirstSessionGoal());
+            game.Tick(150);
+            Assert.AreEqual(FirstSessionGoal.ContinueExploring, game.GetFirstSessionGoal());
+        }
+
+        [Test]
         public void PowerUpgradeIncreasesCapacity()
         {
             var game = new WorldModel(WorldState.NewWorld());
