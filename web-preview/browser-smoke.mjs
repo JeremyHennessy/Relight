@@ -51,9 +51,19 @@ try{
   await p.waitForFunction(()=>document.querySelector("#mission-title")?.textContent.includes("scrap miner"));
   assert.match(await p.locator("#mission-description").textContent(),/MINE is already selected for you/,
     "guided mission instructions reflect the actual automatically selected tool");
-  const phoneToast=await p.locator("#toast").boundingBox();
-  assert.ok(phoneToast && phoneToast.y>=0 && phoneToast.y+phoneToast.height<=95,
-    "mobile feedback stays in top screen area instead of covering lower grid");
+  assert.equal(await p.locator("#toast").isVisible(),false,
+    "floating toast is disabled on mobile");
+  assert.equal(await p.locator("#mobile-feedback").isVisible(),true,
+    "phone construction feedback is visible beside the tools");
+  assert.match(await p.locator("#mobile-feedback").textContent(),/Structure built/,
+    "successful construction is acknowledged inline");
+  const phoneFeedback=await p.locator("#mobile-feedback").boundingBox();
+  const phoneBoard=await p.locator("#network-board").boundingBox();
+  const phoneMission=await p.locator(".mission-banner").boundingBox();
+  assert.ok(phoneFeedback && phoneBoard && phoneMission &&
+    phoneFeedback.y >= phoneMission.y+phoneMission.height-2 &&
+    phoneFeedback.y+phoneFeedback.height < phoneBoard.y,
+    "phone feedback occupies its reserved space between mission and grid without covering either");
   assert.equal(await p.locator('.quick-tool[data-machine="3"]').getAttribute("aria-pressed"),"true",
     "next guided machine auto-selects on compact palette");
   assert.match(await p.locator('[data-index="7"]').getAttribute("class"),/suggested/);
@@ -139,22 +149,17 @@ try{
   await small.locator('[data-index="19"]').click();
   assert.match(await small.locator("#mission-title").textContent(),/scrap miner/i);
   assert.match(await small.locator("#mission-description").textContent(),/MINE is already selected for you/);
-  // The toast auto-dismisses after 3.5 seconds. Earlier test read its
-  // offscreen hidden position after it had expired, a test error rather
-  // than a UI regression. Re-trigger feedback and measure while visible.
   await small.locator('.quick-tool[data-machine="3"]').click();
-  await small.waitForFunction(()=>{
-    const toast=document.querySelector("#toast");
-    const rect=toast.getBoundingClientRect();
-    return toast.classList.contains("visible") && rect.top>=0;
-  },null,{timeout:2500});
-  const narrowToast=await small.locator("#toast").boundingBox();
-  const narrowBoard=await small.locator("#network-board").boundingBox();
-  console.log("NARROW VISIBLE TOAST GEOMETRY",JSON.stringify({toast:narrowToast,board:narrowBoard,innerHeight:640}));
-  assert.ok(narrowToast && narrowToast.y>=0 && narrowToast.y+narrowToast.height<=100,
-    "visible 320px notification must stay in top screen area");
-  assert.ok(narrowBoard && narrowToast.y+narrowToast.height<narrowBoard.y,
-    "visible notification must not obscure the lower play grid");
+  assert.equal(await small.locator("#toast").isVisible(),false,
+    "floating notifications are not drawn over narrow phone screens");
+  await small.waitForFunction(()=>
+    document.querySelector("#mobile-feedback")?.textContent.includes("MINE selected"),
+    null,{timeout:3000});
+  const feedbackBox=await small.locator("#mobile-feedback").boundingBox();
+  const boardBox=await small.locator("#network-board").boundingBox();
+  console.log("NARROW INLINE FEEDBACK",JSON.stringify({feedback:feedbackBox,board:boardBox}));
+  assert.ok(feedbackBox && boardBox && feedbackBox.y+feedbackBox.height<boardBox.y,
+    "reserved mobile feedback must be above and not overlap the construction grid");
   await small.screenshot({path:"relight-narrow-320-playtest.png",fullPage:true,animations:"disabled"});
   await narrow.close();
 
@@ -165,6 +170,8 @@ try{
   await d.goto(origin,{waitUntil:"networkidle"});
   assert.equal(await d.locator(".quick-tool").first().isVisible(),false,
     "desktop layout continues using full detailed tool descriptions");
+  assert.equal(await d.locator("#mobile-feedback").isVisible(),false,
+    "desktop keeps normal transient feedback instead of mobile reserved line");
   await d.locator("#begin").click();
   const desktopOverflow=await d.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
   assert.ok(desktopOverflow<=2,"desktop page has horizontal overflow: "+desktopOverflow);
