@@ -117,6 +117,19 @@ internal static class Program
         Check(tutorial.GetFirstSessionGoal() == FirstSessionGoal.ContinueExploring,
             "mission completes once a region is restored");
 
+        var compact = NetworkLayout.Calculate(400, 300);
+        Check(compact.Valid, "compact portrait panel has valid network geometry");
+        Equal(compact.TotalContentWidth, compact.Size, "grid cells fit exactly in square panel");
+        Check(compact.Size <= 284 && compact.Size <= 384,
+            "network geometry keeps margins on compact displays");
+        Check(compact.CellSize >= 44,
+            "compact network cells retain usable target dimensions");
+        var wide = NetworkLayout.Calculate(1300, 900);
+        Equal(wide.Size, 800, "network graphics cap at 800 reference units");
+        Check(!NetworkLayout.Calculate(0, 900).Valid, "zero-width geometry is rejected");
+        Check(!NetworkLayout.Calculate(double.NaN, 900).Valid,
+            "nonfinite geometry input is rejected");
+
         var random = new Random(2841);
         var sandbox = new WorldModel(WorldState.NewWorld());
         for (int step = 0; step < 1000; step++)
