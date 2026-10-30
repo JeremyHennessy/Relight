@@ -1,7 +1,7 @@
 name: Unity Android development APK (opt-in)
 
 # This job is disabled until Unity licensing has been configured by the
-# repository owner in Actions secrets, and RELIGHT_UNITY_CI is set to 'enabled'.
+# repository owner in Actions secrets, and RELIGHT_ANDROID_CI is set to 'enabled'.
 # It never creates a store-ready release or uses production signing keys.
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
 jobs:
   android-development-apk:
     name: Unity 6000.1.9f1 Android development APK
-    if: ${{ vars.RELIGHT_UNITY_CI == 'enabled' }}
+    if: ${{ vars.RELIGHT_ANDROID_CI == 'enabled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
