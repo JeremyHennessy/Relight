@@ -70,7 +70,11 @@ function choose(machine,manual=true){
     guided&&hint>=0?
       words[selected]+" selected · tap the glowing NEXT tile":
       words[selected]+" selected · tap an empty square";
-  if(manual)notice(selected===Machine.Empty?"Tap a structure to remove it.":words[selected]+" selected. Now tap an empty square.");
+  if(manual)notice(selected===Machine.Empty?
+    "Tap a structure to remove it.":
+    guided&&hint>=0?
+      words[selected]+" selected. Tap the glowing NEXT tile.":
+      words[selected]+" selected. Now tap an empty square.");
 }
 document.querySelectorAll(".tool, .quick-tool").forEach(el=>el.addEventListener("click",()=>choose(Number(el.dataset.machine))));
 function tap(index){
