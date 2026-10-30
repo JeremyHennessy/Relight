@@ -156,11 +156,22 @@ function render(force=false){
     $(mining?"mining-level":"power-level").textContent="Level "+(mining?state.extractorLevel:state.powerLevel);
     $(mining?"mining-price":"power-price").firstChild.textContent=readable(cost)+" SCRAP ";
   }
-  const bucket=Math.floor(percentage/3)+(state.region*40);
-  if(bucket!==lastPlanet||force){lastPlanet=bucket;drawPlanet(state.region,percentage/100);}
-  $("planet-caption").textContent=ready?"ATMOSPHERE: RENEWED":percentage>=75?"ATMOSPHERE: REVIVING":percentage>=30?"ATMOSPHERE: RECOVERING":"ATMOSPHERE: DORMANT";
+  // One planet spans three restoration regions in the Unity game.
+  // Reviving a region must preserve the visual reward; only moving to the
+  // next planet may reset its environment. Keep the same 24 recovery buckets
+  // as the native renderer to prevent independent browser drift.
+  const planetIndex=Math.floor(state.region/3);
+  const planetRecovery=((state.region%3)+percentage/100)/3;
+  const planetBucket=Math.max(0,Math.min(24,Math.floor(planetRecovery*24)));
+  const planetKey=planetIndex*100+planetBucket;
+  if(planetKey!==lastPlanet||force){
+    lastPlanet=planetKey;
+    drawPlanet(planetIndex,planetBucket/24);
+  }
+  $("planet-caption").textContent=planetRecovery>=.96?"ATMOSPHERE: RENEWED":
+    planetRecovery>=.2?"ATMOSPHERE: RECOVERING":"ATMOSPHERE: DORMANT";
   $("planet-tag").lastChild.textContent=ready?" READY TO AWAKEN":" RESTORATION ACTIVE";
-  $("planet-name").textContent=["AURORA-9","SOLACE","VERDANT","HOLLOW SKY","ECHO PRIME","NEW DAWN"][state.region%6];
+  $("planet-name").textContent=["AURORA-9","SOLACE","VERDANT","HOLLOW SKY","ECHO PRIME","NEW DAWN"][planetIndex%6];
 }
 function lerp(a,b,t){return a+(b-a)*t;}
 function rgba(c,a=1){return "rgba("+c.map(v=>Math.round(v)).join(",")+","+a+")";}
