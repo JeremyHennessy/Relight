@@ -56,12 +56,20 @@ try{
   // milestone. Seed only the persisted restore meter to avoid a 2-minute
   // wall-clock test; run the final completion and revival through the UI.
   const planetBefore=await p.locator("#planet").evaluate(e=>e.toDataURL());
-  await p.evaluate(()=>{
+  // A normal reload fires the game's pagehide save handler, so writing to
+  // localStorage *before* reloading is immediately overwritten. Inject once
+  // at document startup, ahead of the app module, to simulate a legitimate
+  // nearly-completed saved region without weakening real persistence.
+  await p.addInitScript(()=>{
+    const marker="relight.browser-test.seeded-once";
+    if(sessionStorage.getItem(marker))return;
     const key="relight.webplaytest.v1";
-    const snapshot=JSON.parse(localStorage.getItem(key));
+    const snapshot=JSON.parse(localStorage.getItem(key)||"null");
+    if(!snapshot || snapshot.cells?.[19]!==5 || snapshot.cells?.[7]!==3)return;
     snapshot.restoration=99.8;
     snapshot.savedAt=Math.floor(Date.now()/1000);
     localStorage.setItem(key,JSON.stringify(snapshot));
+    sessionStorage.setItem(marker,"yes");
   });
   await p.reload({waitUntil:"networkidle"});
   await p.waitForFunction(()=>!document.querySelector("#revive").disabled,
