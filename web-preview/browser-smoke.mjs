@@ -13,6 +13,7 @@ try{
   await p.goto(origin,{waitUntil:"networkidle"});
   assert.equal(await p.locator(".tile").count(),25,"5x5 grid rendered");
   assert.equal(await p.locator("#welcome").evaluate(e=>e.open),true,"first-launch tutorial appears");
+  await p.screenshot({path:"relight-mobile-onboarding.png",fullPage:true,animations:"disabled"});
   await p.locator("#begin").click();
   assert.equal(await p.locator("#welcome").evaluate(e=>e.open),false,"tutorial closes");
   assert.match(await p.locator("#mission-title").textContent(),/life engine/i);
