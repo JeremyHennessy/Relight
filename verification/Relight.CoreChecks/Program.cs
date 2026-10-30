@@ -166,6 +166,32 @@ internal static class Program
         Console.WriteLine("OFFLINE ECONOMY BASELINE: " +
             unattended.State.Scrap.ToString("0.##") + " scrap after eight hours and 100 seconds of active ticks.");
 
+        var cappedOfflineState = WorldState.NewWorld();
+        cappedOfflineState.SavedAtUnix = 100;
+        var cappedOffline = new WorldModel(cappedOfflineState);
+        double starterMineRate = cappedOffline.CalculateRates().ScrapPerSecond;
+        double starterRestorationTarget = WorldModel.TargetForRegion(0);
+        cappedOffline.ApplyOffline(100 + WorldModel.OfflineCapSeconds);
+        Equal(cappedOffline.State.Scrap,
+            30 + starterMineRate * WorldModel.OfflineScrapProductionCapSeconds -
+            starterRestorationTarget,
+            "eight-hour offline scrap is capped at thirty minutes of mined output");
+        var oneHourState = WorldState.NewWorld();
+        oneHourState.SavedAtUnix = 100;
+        var oneHourOffline = new WorldModel(oneHourState);
+        oneHourOffline.ApplyOffline(3700);
+        Equal(oneHourOffline.State.Scrap, cappedOffline.State.Scrap,
+            "one and eight hours offline yield the same stored scrap at base production");
+        var activeModel = new WorldModel(WorldState.NewWorld());
+        activeModel.Tick(WorldModel.OfflineCapSeconds);
+        Check(activeModel.State.Scrap > cappedOffline.State.Scrap,
+            "offline storage cap does not throttle active mining");
+        Equal(cappedOffline.State.TotalPlayedSeconds, WorldModel.OfflineCapSeconds,
+            "all credited offline time still counts toward time played");
+        Console.WriteLine("OFFLINE ECONOMY AFTER CAP: " +
+            cappedOffline.State.Scrap.ToString("0.##") +
+            " stored scrap after eight hours; active mining unchanged.");
+
         Console.WriteLine("PACING RESULT: one free, claimable region after eight hours offline.");
 
         var random = new Random(2841);
