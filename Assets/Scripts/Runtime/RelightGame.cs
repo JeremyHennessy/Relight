@@ -59,7 +59,17 @@ namespace Relight
             if (saveClock >= 15f) { Save(); saveClock = 0; }
         }
 
-        private void OnApplicationPause(bool paused) { if (paused) Save(); }
+        private void OnApplicationPause(bool paused)
+        {
+            if (paused) Save();
+            else if (world != null)
+            {
+                double away = world.ApplyOffline(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                if (away > 1 && status != null)
+                    status.text = "Offline production: " + Format(away) + " seconds.";
+                Refresh();
+            }
+        }
         private void OnApplicationQuit() { Save(); }
 
         private void Save()
