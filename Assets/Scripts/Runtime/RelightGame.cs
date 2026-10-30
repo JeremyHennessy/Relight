@@ -9,6 +9,7 @@ namespace Relight
     public sealed class RelightGame : MonoBehaviour
     {
         private const string SaveKey = "relight.save.v1";
+        private const string BackupSaveKey = "relight.save.backup.v1";
         private WorldModel world;
         private Machine selected = Machine.Generator;
         private Text header, subtitle, objective, status, hint;
@@ -41,13 +42,13 @@ namespace Relight
             Application.targetFrameRate = 60;
             Screen.orientation = ScreenOrientation.Portrait;
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            WorldState saved = null;
-            try
+            WorldState saved = LoadValidSave(SaveKey);
+            if (saved == null)
             {
-                if (PlayerPrefs.HasKey(SaveKey))
-                    saved = JsonUtility.FromJson<WorldState>(PlayerPrefs.GetString(SaveKey));
+                saved = LoadValidSave(BackupSaveKey);
+                if (saved != null)
+                    Debug.LogWarning("Relight restored a valid backup after the primary save was unavailable.");
             }
-            catch (Exception error) { Debug.LogWarning("Relight save rejected: " + error.Message); }
             world = new WorldModel(saved);
             int beforeOffline = world.State.Region;
             double away = world.ApplyOffline(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
@@ -96,11 +97,39 @@ namespace Relight
         private void OnApplicationQuit() { Save(); }
         private void OnDestroy() { if (planetTexture != null) Destroy(planetTexture); }
 
+        private static WorldState LoadValidSave(string key)
+        {
+            if (!PlayerPrefs.HasKey(key)) return null;
+            try
+            {
+                var state = JsonUtility.FromJson<WorldState>(PlayerPrefs.GetString(key));
+                if (WorldModel.Validate(state)) return state;
+                Debug.LogWarning("Relight save validation failed for: " + key);
+            }
+            catch (Exception error)
+            {
+                Debug.LogWarning("Relight could not read save " + key + ": " + error.Message);
+            }
+            return null;
+        }
+
         private void Save()
         {
-            world.State.SavedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            PlayerPrefs.SetString(SaveKey, JsonUtility.ToJson(world.State));
-            PlayerPrefs.Save();
+            try
+            {
+                world.State.SavedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                string json = JsonUtility.ToJson(world.State);
+                // Keep the last valid primary save, not a malformed value,
+                // so a failed write cannot easily destroy all local progress.
+                if (LoadValidSave(SaveKey) != null)
+                    PlayerPrefs.SetString(BackupSaveKey, PlayerPrefs.GetString(SaveKey));
+                PlayerPrefs.SetString(SaveKey, json);
+                PlayerPrefs.Save();
+            }
+            catch (Exception error)
+            {
+                Debug.LogError("Relight could not save progress: " + error.Message);
+            }
         }
 
         private static string Format(double value)
