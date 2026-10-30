@@ -12,6 +12,10 @@ namespace Relight
         private WorldModel world;
         private Machine selected = Machine.Relay;
         private Text header, subtitle, status, hint;
+        private RawImage planetView;
+        private Texture2D planetTexture;
+        private int lastPlanetKey = -1;
+        private bool repairPending;
         private readonly Button[] tiles = new Button[25];
         private readonly Text[] tileLabels = new Text[25];
         private readonly Image[] tileBackgrounds = new Image[25];
@@ -71,6 +75,7 @@ namespace Relight
             }
         }
         private void OnApplicationQuit() { Save(); }
+        private void OnDestroy() { if (planetTexture != null) Destroy(planetTexture); }
 
         private void Save()
         {
@@ -115,7 +120,14 @@ namespace Relight
             header = Label(top.transform, "RELIGHT", 52, TextAnchor.UpperLeft, Color.white);
             SetAnchors(header.rectTransform, new Vector2(.04f,.40f), new Vector2(.96f,.95f));
             subtitle = Label(top.transform, "", 29, TextAnchor.MiddleLeft, Accent);
-            SetAnchors(subtitle.rectTransform, new Vector2(.04f,.06f), new Vector2(.96f,.44f));
+            SetAnchors(subtitle.rectTransform, new Vector2(.04f,.06f), new Vector2(.73f,.44f));
+            SetAnchors(header.rectTransform, new Vector2(.04f,.40f), new Vector2(.73f,.95f));
+            var planetObject = new GameObject("Recovering Planet", typeof(RectTransform), typeof(RawImage));
+            planetObject.transform.SetParent(top.transform, false);
+            SetAnchors((RectTransform)planetObject.transform, new Vector2(.73f,.05f), new Vector2(.99f,.95f));
+            planetView = planetObject.GetComponent<RawImage>();
+            planetView.raycastTarget = false;
+            planetView.color = Color.white;
 
             var worldPanel = Block(safe.transform, "World", new Vector2(.04f,.38f), new Vector2(.96f,.825f), Panel);
             var gridObject = new GameObject("Energy Network", typeof(RectTransform), typeof(GridLayoutGroup));
@@ -163,10 +175,14 @@ namespace Relight
 
             var bottom = Block(safe.transform, "Status", new Vector2(.04f,.015f), new Vector2(.96f,.075f), Panel);
             status = Label(bottom.transform, "", 24, TextAnchor.MiddleCenter, Color.white);
+            SetAnchors(status.rectTransform, new Vector2(.02f,0), new Vector2(.76f,1));
+            var repair = ButtonWithLabel(bottom.transform, "Emergency Repair", "REPAIR", 23, Repair);
+            SetAnchors((RectTransform)repair.transform, new Vector2(.77f,.10f), new Vector2(.99f,.90f));
         }
 
         private void TapTile(int index)
         {
+            repairPending = false;
             if (world.Place(index, selected)) Save();
             status.text = world.LastMessage;
             Refresh();
@@ -174,8 +190,24 @@ namespace Relight
 
         private void Upgrade(bool mining)
         {
+            repairPending = false;
             if (world.Upgrade(mining)) Save();
             status.text = world.LastMessage;
+            Refresh();
+        }
+
+        private void Repair()
+        {
+            if (!repairPending)
+            {
+                repairPending = true;
+                status.text = "Tap REPAIR again to reset the grid (no refunds).";
+                return;
+            }
+            repairPending = false;
+            world.ResetGrid();
+            status.text = world.LastMessage;
+            Save();
             Refresh();
         }
 
@@ -184,9 +216,12 @@ namespace Relight
             if (header == null) return;
             var state = world.State;
             header.text = "RELIGHT   /   REGION " + (state.Region + 1);
-            subtitle.text = "SCRAP " + Format(state.Scrap) + "     RESTORED " +
+            var rates = world.CalculateRates();
+            subtitle.text = "SCRAP " + Format(state.Scrap) + "  |  RESTORED " +
                 (100.0 * state.Restoration / WorldModel.TargetForRegion(state.Region)).ToString("0") +
-                "%     POWER " + world.ActiveConsumers() + "/" + world.PowerCapacity();
+                "%\n+" + rates.ScrapPerSecond.ToString("0.0") + "/s   |   POWER " +
+                rates.ConnectedConsumers + "/" + rates.PowerCapacity;
+            RefreshPlanet();
             var connected = world.Connected();
             var icons = new [] { "+", "CORE", "LINK", "MINE", "LIFE", "GEN" };
             for (int i = 0; i < tiles.Length; i++)
@@ -204,6 +239,22 @@ namespace Relight
             for (int i = 0; i < toolButtons.Length; i++)
                 toolButtons[i].GetComponent<Image>().color = selected == kinds[i] ? Accent : new Color(.18f,.27f,.36f);
             hint.text = "Mining: " + Format(world.UpgradeCost(true)) + " scrap   |   Power: " + Format(world.UpgradeCost(false)) + " scrap";
+        }
+
+        private void RefreshPlanet()
+        {
+            if (planetView == null) return;
+            var state = world.State;
+            float local = Mathf.Clamp01((float)(state.Restoration / WorldModel.TargetForRegion(state.Region)));
+            float planetRecovery = ((state.Region % 3) + local) / 3f;
+            int bucket = Mathf.Clamp(Mathf.FloorToInt(planetRecovery * 24f), 0, 24);
+            int key = (state.Region / 3) * 100 + bucket;
+            if (key == lastPlanetKey) return;
+            var next = PlanetVisual.Generate(state.Region / 3, bucket / 24f);
+            planetView.texture = next;
+            if (planetTexture != null) Destroy(planetTexture);
+            planetTexture = next;
+            lastPlanetKey = key;
         }
 
         private static GameObject Block(Transform parent, string name, Vector2 min, Vector2 max, Color color)

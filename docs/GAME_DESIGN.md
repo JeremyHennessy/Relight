@@ -16,10 +16,13 @@ Build generators and relay connections -> power extractors -> earn scrap -> powe
 ## First vertical slice (implemented as source, unverified in Unity)
 - 5x5 grid, central power core, adjacency-based connectivity.
 - Five build actions: relay, extractor, restorer, generator, remove.
-- Capacity-constrained production, scrap consumption for restoration.
+- Fairly shared capacity-constrained production, scrap consumption for restoration.
+- Adjacency bonuses for mines next to relays and restorers next to generators.
+- Emergency network repair preserving long-term progress.
+- Procedural planet art in the header, visibly recovering over three-region cycles.
 - Mining and power upgrades, increasing region restoration targets.
 - JSON save via PlayerPrefs, capped offline progress, portrait UI.
-- All graphics currently placeholder UI; no audio or effects.
+- The UI is still a prototype, but the planet art is procedurally generated; no audio or effects.
 
 ## Intended deeper gameplay (NOT IMPLEMENTED)
 - Three biome types with distinct power/resource constraints and visual recovery.
