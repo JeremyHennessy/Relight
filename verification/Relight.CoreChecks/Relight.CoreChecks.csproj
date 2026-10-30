@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../Assets/Scripts/Core/WorldModel.cs" Link="WorldModel.cs" />
+    <Compile Include="../../Assets/Scripts/Core/NetworkLayout.cs" Link="NetworkLayout.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>
