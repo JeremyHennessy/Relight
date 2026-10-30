@@ -9,17 +9,17 @@ One spark brings a dead world back to life. Build an energy network, connect min
 ## Current source
 - Unity `6000.1.9f1` project, C# energy-network core, build tools and edit-mode tests.
 - 5×5 network, five build actions, production/consumption, adjacency synergies, power constraints and two upgrade types.
-- Guided first session: boost the LIFE facility, expand the mine network, then restore a region.
+- Guided first session: boost the LIFE facility, expand the mine network, then tap REVIVE to claim a completed region for free. Build buttons show costs and the recommended tool follows the tutorial mission.
 - Procedurally generated planets with four visual styles, gradual restoration, clouds, city lights and region-completion feedback.
 - Animated non-interactive energy paths and power pulses, plus responsive grid sizing for different portrait display sizes.
-- Local saving with a last-valid-save fallback, capped offline earnings, and emergency network repair.
+- Local saving with a last-valid-save fallback, capped offline earnings, one claimable region per unattended interval, and emergency network repair.
 - GitHub Actions compile the Unity-independent C# model and exercise deterministic and randomized gameplay checks. Roslyn parses Unity C# source. **Neither verifies Unity API integration or a mobile build.**
 
 ## Repository layout
 - `Assets/Scripts/Core/`: deterministic game economy and state — no Unity dependency.
 - `Assets/Scripts/Runtime/`: portrait UI, interactions, procedural visual generation.
 - `Assets/Editor/`: Unity scene setup and Android development build menu.
-- `Assets/Tests/EditMode/`: Unity-specific EditMode tests (**16 defined**, not yet run in Unity).
+- `Assets/Tests/EditMode/`: Unity-specific EditMode tests (**17 defined**, not yet run in Unity).
 - `verification/`: standalone .NET core and C# syntax validation jobs.
 - `docs/PRODUCT_STRATEGY.md`: long-term gameplay/visual/business direction.
 - `docs/GAME_DESIGN.md`: concrete mechanics and progression plan.
@@ -40,6 +40,9 @@ Read [Build and release instructions](docs/BUILD_AND_RELEASE.md) before producin
 - [PR #1 — first playable foundation](https://github.com/JeremyHennessy/Relight/pull/1)
 - [PR #5 — procedural planets and placement synergies](https://github.com/JeremyHennessy/Relight/pull/5)
 - [PR #6 — first-session missions, stronger saving, and CI verification](https://github.com/JeremyHennessy/Relight/pull/6)
+- [PR #7 — prevent false-positive Unity verification](https://github.com/JeremyHennessy/Relight/pull/7)
+- [PR #8 — animated energy routes and responsive grid](https://github.com/JeremyHennessy/Relight/pull/8)
+- [Pacing evidence — why regions now require a free claim](docs/PACING_EVIDENCE.md)
 
 All development PRs remain **draft and unmerged** until verified engine/device results justify approval. No ads, purchases, analytics SDK or store credentials are present.
 
