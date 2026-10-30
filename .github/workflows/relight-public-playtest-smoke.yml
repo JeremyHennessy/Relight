@@ -31,10 +31,13 @@ jobs:
           done
           grep -q '<title>Relight' /tmp/relight-live-_
           grep -q 'from "./model.mjs"' /tmp/relight-live-_app_mjs
-          # Verify the new hosted release, not a stale cached prior revision.
+          # Prove the deployed site includes the latest inline-feedback fix,
+          # rather than showing a stale prior Cloudflare revision.
           grep -Fq 'MINE is already selected for you' /tmp/relight-live-_app_mjs
-          grep -Fq 'On phones, transient action feedback sits at the top edge' /tmp/relight-live-_styles_css
-          echo "PASS: public HTTPS assets include corrected tutorial and mobile notification positioning"
+          grep -Fq 'function mobileFeedback(message,warning=false)' /tmp/relight-live-_app_mjs
+          grep -Fq '.mobile-feedback{display:none}' /tmp/relight-live-_styles_css
+          grep -Fq 'id="mobile-feedback"' /tmp/relight-live-_
+          echo "PASS: published HTTPS assets include accessible inline mobile feedback"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
