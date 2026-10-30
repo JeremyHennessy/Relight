@@ -33,8 +33,14 @@ Invoke-Unity "Initialize playable scene" @(
 
 $testsLog = Join-Path $verification "02-editmode.log"
 $testsXml = Join-Path $verification "editmode-results.xml"
+# Do not accept a stale Passed result from an earlier run.
+if (Test-Path -LiteralPath $testsXml) {
+    Remove-Item -LiteralPath $testsXml -Force
+}
+# Unity Test Framework handles editor exit after -runTests.
+# Unity explicitly does not support supplying -quit during a test run.
 Invoke-Unity "Execute Unity EditMode tests" @(
-    "-batchmode", "-nographics", "-quit",
+    "-batchmode", "-nographics",
     "-projectPath", $project,
     "-runTests", "-testPlatform", "EditMode",
     "-testResults", $testsXml, "-logFile", $testsLog
@@ -46,14 +52,24 @@ if (-not (Test-Path -LiteralPath $testsXml)) {
 
 [xml]$results = Get-Content -LiteralPath $testsXml -Raw
 $testRun = $results.'test-run'
-if ($null -eq $testRun -or $testRun.result -ne "Passed") {
-    throw "Unity EditMode tests did not pass. Review $testsXml and $testsLog."
+if ($null -eq $testRun) {
+    throw "Unity produced an unrecognized XML test result. Review $testsXml."
+}
+$total = [int]$testRun.total
+$failed = [int]$testRun.failed
+if ($testRun.result -ne "Passed" -or $total -lt 13 -or $failed -ne 0) {
+    throw "Unity EditMode tests incomplete/failed: result=$($testRun.result), total=$total, failed=$failed. Review $testsXml and $testsLog."
 }
 
-Write-Host "Unity EditMode suite PASSED. Output: $testsXml"
+Write-Host "Unity EditMode suite PASSED ($total discovered, $failed failed). Output: $testsXml"
 
 if (-not $SkipAndroid) {
     $androidLog = Join-Path $verification "03-android.log"
+    $apk = Join-Path $project "Builds\Relight-dev.apk"
+    # A previous successful APK must never masquerade as a new build.
+    if (Test-Path -LiteralPath $apk) {
+        Remove-Item -LiteralPath $apk -Force
+    }
     Invoke-Unity "Build Android development APK" @(
         "-batchmode", "-nographics", "-quit",
         "-projectPath", $project,
