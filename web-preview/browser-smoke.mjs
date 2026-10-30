@@ -33,9 +33,24 @@ try{
   const boardTop=await p.locator("#network-board").evaluate(e=>e.getBoundingClientRect().top);
   console.log("GUIDED BOARD USABLY VISIBLE",Math.round(boardTop));
   assert.match(await p.locator("#mission-title").textContent(),/life engine/i);
+  assert.equal(await p.locator(".quick-tool").count(),5,"compact mobile machine controls");
+  assert.equal(await p.locator('.quick-tool[data-machine="5"]').getAttribute("aria-pressed"),"true");
+  assert.equal(await p.locator(".quick-tool").first().isVisible(),true,
+    "machine controls must appear beside mobile board");
+  const quickTarget=await p.locator(".quick-tool").first().boundingBox();
+  assert.ok(quickTarget.width>=44&&quickTarget.height>=44,
+    "mobile machine selector must be easy to tap");
+  await p.locator('.quick-tool[data-machine="2"]').click();
+  assert.equal(await p.locator('.tool[data-machine="2"]').getAttribute("aria-pressed"),"true",
+    "compact selector updates full construction palette");
+  await p.locator('.quick-tool[data-machine="5"]').click();
+  assert.equal(await p.locator('.tool[data-machine="5"]').getAttribute("aria-pressed"),"true");
+  assert.match(await p.locator("#selected-tool-text").textContent(),/glowing NEXT tile/);
   assert.match(await p.locator('[data-index="19"]').getAttribute("class"),/suggested/);
   await p.locator('[data-index="19"]').click();
   await p.waitForFunction(()=>document.querySelector("#mission-title")?.textContent.includes("scrap miner"));
+  assert.equal(await p.locator('.quick-tool[data-machine="3"]').getAttribute("aria-pressed"),"true",
+    "next guided machine auto-selects on compact palette");
   assert.match(await p.locator('[data-index="7"]').getAttribute("class"),/suggested/);
   await p.locator('[data-index="7"]').click();
   await p.waitForFunction(()=>document.querySelector("#mission-title")?.textContent.includes("world wake up"));
@@ -100,6 +115,8 @@ try{
   d.on("pageerror",err=>errors.push(err.message));
   d.on("console",msg=>{if(msg.type()==="error")errors.push(msg.text());});
   await d.goto(origin,{waitUntil:"networkidle"});
+  assert.equal(await d.locator(".quick-tool").first().isVisible(),false,
+    "desktop layout continues using full detailed tool descriptions");
   await d.locator("#begin").click();
   const desktopOverflow=await d.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
   assert.ok(desktopOverflow<=2,"desktop page has horizontal overflow: "+desktopOverflow);
