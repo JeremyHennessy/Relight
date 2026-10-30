@@ -23,10 +23,14 @@ try{
   console.log("ONBOARDING GEOMETRY",JSON.stringify(geometry));
   await p.locator("#begin").click({timeout:4000});
   assert.equal(await p.locator("#welcome").evaluate(e=>e.open),false,"tutorial closes");
-  await p.waitForFunction(()=>window.scrollY>200,{},{timeout:6000});
+  // Scroll behavior may animate; inspect the final visible position, not
+  // the first scroll frame. The board must enter the actual viewport.
+  await p.waitForFunction(()=>{
+    const rect=document.querySelector("#network-board").getBoundingClientRect();
+    return window.scrollY>200 && rect.top>=0 && rect.top<window.innerHeight;
+  },null,{timeout:6000});
   const boardTop=await p.locator("#network-board").evaluate(e=>e.getBoundingClientRect().top);
-  assert.ok(boardTop<844 && boardTop>=0,
-    "first tutorial action must bring construction grid into phone viewport; top="+boardTop);
+  console.log("GUIDED BOARD IN VIEW",Math.round(boardTop));
   assert.match(await p.locator("#mission-title").textContent(),/life engine/i);
   assert.match(await p.locator('[data-index="19"]').getAttribute("class"),/suggested/);
   await p.locator('[data-index="19"]').click();
