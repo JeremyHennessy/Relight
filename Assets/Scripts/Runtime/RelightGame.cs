@@ -9,10 +9,13 @@ namespace Relight
     public sealed class RelightGame : MonoBehaviour
     {
         private const string SaveKey = "relight.save.v1";
+        private const string BackupSaveKey = "relight.save.backup.v1";
         private WorldModel world;
-        private Machine selected = Machine.Relay;
-        private Text header, subtitle, status, hint;
+        private Machine selected = Machine.Generator;
+        private Text header, subtitle, objective, status, hint;
         private RawImage planetView;
+        private Image headerBackground;
+        private float regionCelebrationSeconds;
         private Texture2D planetTexture;
         private int lastPlanetKey = -1;
         private bool repairPending;
@@ -39,24 +42,38 @@ namespace Relight
             Application.targetFrameRate = 60;
             Screen.orientation = ScreenOrientation.Portrait;
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            WorldState saved = null;
-            try
+            WorldState saved = LoadValidSave(SaveKey);
+            if (saved == null)
             {
-                if (PlayerPrefs.HasKey(SaveKey))
-                    saved = JsonUtility.FromJson<WorldState>(PlayerPrefs.GetString(SaveKey));
+                saved = LoadValidSave(BackupSaveKey);
+                if (saved != null)
+                    Debug.LogWarning("Relight restored a valid backup after the primary save was unavailable.");
             }
-            catch (Exception error) { Debug.LogWarning("Relight save rejected: " + error.Message); }
             world = new WorldModel(saved);
+            int beforeOffline = world.State.Region;
             double away = world.ApplyOffline(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             BuildUI();
-            status.text = away > 1 ? "Welcome back. Offline production: " + Format(away) + " seconds." : "Restore the first region.";
+            if (world.State.Region > beforeOffline)
+                status.text = "Welcome back! " + (world.State.Region - beforeOffline) + " region(s) revived offline.";
+            else
+                status.text = away > 1 ? "Welcome back. Offline production: " + Format(away) + " seconds." : "Restore the first region.";
             Refresh();
         }
 
         private void Update()
         {
             double dt = Math.Min(Time.unscaledDeltaTime, 0.25f);
+            int previousRegion = world.State.Region;
             world.Tick(dt);
+            if (world.State.Region > previousRegion)
+                CelebrateRestoration(world.State.Region - previousRegion);
+            if (regionCelebrationSeconds > 0f && headerBackground != null)
+            {
+                regionCelebrationSeconds = Mathf.Max(0f, regionCelebrationSeconds - Time.unscaledDeltaTime);
+                float pulse = Mathf.Sin((3f - regionCelebrationSeconds) * 7f) * .5f + .5f;
+                headerBackground.color = Color.Lerp(Panel, new Color(.12f,.43f,.35f),
+                    (regionCelebrationSeconds / 3f) * pulse);
+            }
             refreshClock += Time.unscaledDeltaTime;
             saveClock += Time.unscaledDeltaTime;
             if (refreshClock >= 0.25f) { Refresh(); refreshClock = 0; }
@@ -68,8 +85,11 @@ namespace Relight
             if (paused) Save();
             else if (world != null)
             {
+                int previousRegion = world.State.Region;
                 double away = world.ApplyOffline(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-                if (away > 1 && status != null)
+                if (world.State.Region > previousRegion)
+                    CelebrateRestoration(world.State.Region - previousRegion);
+                else if (away > 1 && status != null)
                     status.text = "Offline production: " + Format(away) + " seconds.";
                 Refresh();
             }
@@ -77,11 +97,39 @@ namespace Relight
         private void OnApplicationQuit() { Save(); }
         private void OnDestroy() { if (planetTexture != null) Destroy(planetTexture); }
 
+        private static WorldState LoadValidSave(string key)
+        {
+            if (!PlayerPrefs.HasKey(key)) return null;
+            try
+            {
+                var state = JsonUtility.FromJson<WorldState>(PlayerPrefs.GetString(key));
+                if (WorldModel.Validate(state)) return state;
+                Debug.LogWarning("Relight save validation failed for: " + key);
+            }
+            catch (Exception error)
+            {
+                Debug.LogWarning("Relight could not read save " + key + ": " + error.Message);
+            }
+            return null;
+        }
+
         private void Save()
         {
-            world.State.SavedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            PlayerPrefs.SetString(SaveKey, JsonUtility.ToJson(world.State));
-            PlayerPrefs.Save();
+            try
+            {
+                world.State.SavedAtUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                string json = JsonUtility.ToJson(world.State);
+                // Keep the last valid primary save, not a malformed value,
+                // so a failed write cannot easily destroy all local progress.
+                if (LoadValidSave(SaveKey) != null)
+                    PlayerPrefs.SetString(BackupSaveKey, PlayerPrefs.GetString(SaveKey));
+                PlayerPrefs.SetString(SaveKey, json);
+                PlayerPrefs.Save();
+            }
+            catch (Exception error)
+            {
+                Debug.LogError("Relight could not save progress: " + error.Message);
+            }
         }
 
         private static string Format(double value)
@@ -116,20 +164,28 @@ namespace Relight
             safeRect.anchorMax = new Vector2(area.xMax / Screen.width, area.yMax / Screen.height);
             safeRect.offsetMin = safeRect.offsetMax = Vector2.zero;
 
-            var top = Block(safe.transform, "Header", new Vector2(.05f,.84f), new Vector2(.95f,.985f), Panel);
-            header = Label(top.transform, "RELIGHT", 52, TextAnchor.UpperLeft, Color.white);
-            SetAnchors(header.rectTransform, new Vector2(.04f,.40f), new Vector2(.96f,.95f));
-            subtitle = Label(top.transform, "", 29, TextAnchor.MiddleLeft, Accent);
-            SetAnchors(subtitle.rectTransform, new Vector2(.04f,.06f), new Vector2(.73f,.44f));
-            SetAnchors(header.rectTransform, new Vector2(.04f,.40f), new Vector2(.73f,.95f));
-            var planetObject = new GameObject("Recovering Planet", typeof(RectTransform), typeof(RawImage));
+            // Large planet preview and clear first-session mission are the
+            // primary visual hierarchy. The network remains one-thumb playable.
+            var top = Block(safe.transform, "Header", new Vector2(.04f,.75f), new Vector2(.96f,.985f), Panel);
+            headerBackground = top.GetComponent<Image>();
+            header = Label(top.transform, "RELIGHT", 56, TextAnchor.MiddleLeft, Color.white);
+            SetAnchors(header.rectTransform, new Vector2(.04f,.70f), new Vector2(.61f,.97f));
+            subtitle = Label(top.transform, "", 31, TextAnchor.MiddleLeft, Accent);
+            SetAnchors(subtitle.rectTransform, new Vector2(.04f,.38f), new Vector2(.65f,.68f));
+            objective = Label(top.transform, "", 28, TextAnchor.MiddleLeft, Color.white);
+            SetAnchors(objective.rectTransform, new Vector2(.04f,.06f), new Vector2(.63f,.34f));
+            var planetObject = new GameObject("Recovering Planet",
+                typeof(RectTransform), typeof(RawImage), typeof(AspectRatioFitter));
             planetObject.transform.SetParent(top.transform, false);
-            SetAnchors((RectTransform)planetObject.transform, new Vector2(.73f,.05f), new Vector2(.99f,.95f));
+            SetAnchors((RectTransform)planetObject.transform, new Vector2(.59f,.02f), new Vector2(.99f,.98f));
             planetView = planetObject.GetComponent<RawImage>();
             planetView.raycastTarget = false;
             planetView.color = Color.white;
+            var aspect = planetObject.GetComponent<AspectRatioFitter>();
+            aspect.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+            aspect.aspectRatio = 1f;
 
-            var worldPanel = Block(safe.transform, "World", new Vector2(.04f,.38f), new Vector2(.96f,.825f), Panel);
+            var worldPanel = Block(safe.transform, "World", new Vector2(.04f,.285f), new Vector2(.96f,.735f), Panel);
             var gridObject = new GameObject("Energy Network", typeof(RectTransform), typeof(GridLayoutGroup));
             gridObject.transform.SetParent(worldPanel.transform, false);
             var gridRect = (RectTransform)gridObject.transform;
@@ -150,7 +206,7 @@ namespace Relight
                 tileBackgrounds[i] = tiles[i].GetComponent<Image>();
             }
 
-            var controls = Block(safe.transform, "Build Tools", new Vector2(.04f,.20f), new Vector2(.96f,.365f), Panel);
+            var controls = Block(safe.transform, "Build Tools", new Vector2(.04f,.147f), new Vector2(.96f,.27f), Panel);
             var names = new [] { "RELAY", "MINE", "RESTORE", "POWER", "REMOVE" };
             var kinds = new [] { Machine.Relay, Machine.Extractor, Machine.Restorer, Machine.Generator, Machine.Empty };
             for (int i = 0; i < names.Length; i++)
@@ -159,13 +215,14 @@ namespace Relight
                 toolButtons[i] = ButtonWithLabel(controls.transform, names[i], names[i], 23, () =>
                 {
                     selected = kinds[index];
+                    repairPending = false;
                     status.text = selected == Machine.Empty ? "Tap a structure to remove it." : "Tap an empty tile to construct " + selected + ".";
                     Refresh();
                 });
                 SetAnchors((RectTransform)toolButtons[i].transform, new Vector2(.02f + i*.196f,.25f), new Vector2(.198f + i*.196f,.83f));
             }
 
-            var upgrades = Block(safe.transform, "Upgrades", new Vector2(.04f,.085f), new Vector2(.96f,.185f), Panel);
+            var upgrades = Block(safe.transform, "Upgrades", new Vector2(.04f,.062f), new Vector2(.96f,.132f), Panel);
             var mining = ButtonWithLabel(upgrades.transform, "Mining Upgrade", "UPGRADE MINING", 26, () => Upgrade(true));
             SetAnchors((RectTransform)mining.transform, new Vector2(.025f,.15f), new Vector2(.485f,.85f));
             var power = ButtonWithLabel(upgrades.transform, "Power Upgrade", "UPGRADE POWER", 26, () => Upgrade(false));
@@ -173,11 +230,18 @@ namespace Relight
             hint = Label(upgrades.transform, "", 19, TextAnchor.MiddleCenter, Accent);
             SetAnchors(hint.rectTransform, new Vector2(0,0), new Vector2(1,.15f));
 
-            var bottom = Block(safe.transform, "Status", new Vector2(.04f,.015f), new Vector2(.96f,.075f), Panel);
+            var bottom = Block(safe.transform, "Status", new Vector2(.04f,.008f), new Vector2(.96f,.055f), Panel);
             status = Label(bottom.transform, "", 24, TextAnchor.MiddleCenter, Color.white);
             SetAnchors(status.rectTransform, new Vector2(.02f,0), new Vector2(.76f,1));
             var repair = ButtonWithLabel(bottom.transform, "Emergency Repair", "REPAIR", 23, Repair);
             SetAnchors((RectTransform)repair.transform, new Vector2(.77f,.10f), new Vector2(.99f,.90f));
+        }
+
+        private void CelebrateRestoration(int count)
+        {
+            regionCelebrationSeconds = 3f;
+            status.text = count == 1 ? "REGION REVIVED! Keep the network growing." :
+                count + " REGIONS REVIVED! Your world is awakening.";
         }
 
         private void TapTile(int index)
@@ -221,8 +285,25 @@ namespace Relight
                 (100.0 * state.Restoration / WorldModel.TargetForRegion(state.Region)).ToString("0") +
                 "%\n+" + rates.ScrapPerSecond.ToString("0.0") + "/s   |   POWER " +
                 rates.ConnectedConsumers + "/" + rates.PowerCapacity;
+            var goal = world.GetFirstSessionGoal();
+            switch (goal)
+            {
+                case FirstSessionGoal.ImproveRestoration:
+                    objective.text = "01  POWER THE LIFE ENGINE\nBuild POWER beside LIFE";
+                    break;
+                case FirstSessionGoal.ExpandProduction:
+                    objective.text = "02  EXPAND THE NETWORK\nBuild another MINE";
+                    break;
+                case FirstSessionGoal.RestoreFirstRegion:
+                    objective.text = "03  WATCH THE WORLD AWAKEN\nKeep producing and upgrading";
+                    break;
+                default:
+                    objective.text = "REGION REVIVED\nExplore, optimize, restore";
+                    break;
+            }
             RefreshPlanet();
             var connected = world.Connected();
+            int suggested = world.SuggestedFirstSessionTile();
             var icons = new [] { "+", "CORE", "LINK", "MINE", "LIFE", "GEN" };
             for (int i = 0; i < tiles.Length; i++)
             {
@@ -234,6 +315,14 @@ namespace Relight
                     !active ? new Color(.30f,.22f,.26f) :
                     machine == Machine.Restorer ? new Color(.22f,.55f,.36f) :
                     machine == Machine.Generator ? new Color(.67f,.50f,.19f) : new Color(.20f,.36f,.50f);
+                // Only the suggested empty tile pulses. All other valid
+                // placements remain available to the player.
+                if (i == suggested && machine == Machine.Empty)
+                {
+                    float pulse = .5f + .5f * Mathf.Sin(Time.unscaledTime * 3f);
+                    tileBackgrounds[i].color = Color.Lerp(
+                        new Color(.24f,.34f,.24f), new Color(.49f,.72f,.47f), pulse);
+                }
             }
             var kinds = new [] { Machine.Relay, Machine.Extractor, Machine.Restorer, Machine.Generator, Machine.Empty };
             for (int i = 0; i < toolButtons.Length; i++)

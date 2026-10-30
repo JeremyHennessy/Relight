@@ -49,6 +49,19 @@ namespace Relight.Tests
         }
 
         [Test]
+        public void CorruptTimestampsAndUnknownMachinesAreRejected()
+        {
+            var game = new WorldModel(WorldState.NewWorld());
+            Assert.IsFalse(game.Place(0, (Machine)999));
+            var state = WorldState.NewWorld();
+            state.TotalPlayedSeconds = double.NaN;
+            Assert.IsFalse(WorldModel.Validate(state));
+            state = WorldState.NewWorld();
+            state.SavedAtUnix = -1;
+            Assert.IsFalse(WorldModel.Validate(state));
+        }
+
+        [Test]
         public void InvalidSaveFallsBackToFreshWorld()
         {
             var state = WorldState.NewWorld();
@@ -110,6 +123,20 @@ namespace Relight.Tests
             Assert.AreEqual(4, game.State.Region);
             Assert.AreEqual(3, game.State.ExtractorLevel);
             Assert.AreEqual(25, game.State.Restoration, 0.001);
+        }
+
+        [Test]
+        public void FirstSessionGuidesPlayerWithoutForcedActions()
+        {
+            var game = new WorldModel(WorldState.NewWorld());
+            Assert.AreEqual(FirstSessionGoal.ImproveRestoration, game.GetFirstSessionGoal());
+            Assert.AreEqual(19, game.SuggestedFirstSessionTile());
+            Assert.IsTrue(game.Place(19, Machine.Generator));
+            Assert.AreEqual(FirstSessionGoal.ExpandProduction, game.GetFirstSessionGoal());
+            Assert.IsTrue(game.Place(7, Machine.Extractor));
+            Assert.AreEqual(FirstSessionGoal.RestoreFirstRegion, game.GetFirstSessionGoal());
+            game.Tick(150);
+            Assert.AreEqual(FirstSessionGoal.ContinueExploring, game.GetFirstSessionGoal());
         }
 
         [Test]

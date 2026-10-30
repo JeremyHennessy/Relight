@@ -28,6 +28,14 @@ namespace Relight
         }
     }
 
+    public enum FirstSessionGoal
+    {
+        ImproveRestoration = 0,
+        ExpandProduction = 1,
+        RestoreFirstRegion = 2,
+        ContinueExploring = 3
+    }
+
     public sealed class WorldModel
     {
         public const int Width = 5;
@@ -48,6 +56,10 @@ namespace Relight
             if (double.IsNaN(state.Scrap) || double.IsInfinity(state.Scrap) || state.Scrap < 0) return false;
             if (double.IsNaN(state.Restoration) || double.IsInfinity(state.Restoration) || state.Restoration < 0) return false;
             if (state.Region < 0 || state.ExtractorLevel < 0 || state.PowerLevel < 0) return false;
+            if (state.SavedAtUnix < 0 ||
+                double.IsNaN(state.TotalPlayedSeconds) ||
+                double.IsInfinity(state.TotalPlayedSeconds) ||
+                state.TotalPlayedSeconds < 0) return false;
             foreach (int cell in state.Cells)
                 if (cell < 0 || cell > (int)Machine.Generator) return false;
             return true;
@@ -84,6 +96,7 @@ namespace Relight
         public bool Place(int index, Machine machine)
         {
             if (index < 0 || index >= State.Cells.Length || index == 12) return false;
+            if (machine < Machine.Empty || machine > Machine.Generator) return false;
             if (machine == Machine.Core) return false;
             if (machine == Machine.Empty)
             {
@@ -142,6 +155,57 @@ namespace Relight
             for (int i = 0; i < connected.Length; i++)
                 if (connected[i] && (State.Cells[i] == (int)Machine.Extractor || State.Cells[i] == (int)Machine.Restorer)) count++;
             return count;
+        }
+
+        /// <summary>
+        /// A non-blocking first-session guide. Derived entirely from the saved
+        /// world so it requires no extra tutorial state or forced button presses.
+        /// </summary>
+        public FirstSessionGoal GetFirstSessionGoal()
+        {
+            if (State.Region > 0) return FirstSessionGoal.ContinueExploring;
+            bool[] connected = Connected();
+            int poweredExtractors = 0;
+            bool boostedRestorer = false;
+            for (int i = 0; i < State.Cells.Length; i++)
+            {
+                if (!connected[i]) continue;
+                if (State.Cells[i] == (int)Machine.Extractor) poweredExtractors++;
+                if (State.Cells[i] == (int)Machine.Restorer &&
+                    Adjacent(i, Machine.Generator, connected) > 0)
+                    boostedRestorer = true;
+            }
+            if (!boostedRestorer) return FirstSessionGoal.ImproveRestoration;
+            if (poweredExtractors < 2) return FirstSessionGoal.ExpandProduction;
+            return FirstSessionGoal.RestoreFirstRegion;
+        }
+
+        public int SuggestedFirstSessionTile()
+        {
+            var goal = GetFirstSessionGoal();
+            if (goal == FirstSessionGoal.ImproveRestoration)
+            {
+                // The default LIFE machine is at 14. Any adjacent generator
+                // works; suggest one good option rather than forcing placement.
+                int[] candidates = { 19, 9, 13 };
+                foreach (int i in candidates)
+                    if (State.Cells[i] == (int)Machine.Empty) return i;
+            }
+            if (goal == FirstSessionGoal.ExpandProduction)
+            {
+                int[] candidates = { 7, 17, 10, 16 };
+                bool[] connected = Connected();
+                foreach (int i in candidates)
+                {
+                    if (State.Cells[i] != (int)Machine.Empty) continue;
+                    int x = i % Width, y = i / Width;
+                    if ((x > 0 && connected[i - 1]) ||
+                        (x < Width - 1 && connected[i + 1]) ||
+                        (y > 0 && connected[i - Width]) ||
+                        (y < Height - 1 && connected[i + Width])) return i;
+                }
+            }
+            return -1;
         }
 
         public struct ProductionRates

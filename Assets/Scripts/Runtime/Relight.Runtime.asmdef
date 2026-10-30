@@ -1,7 +1,10 @@
 {
   "name": "Relight.Runtime",
   "rootNamespace": "Relight",
-  "references": ["Relight.Core", "UnityEngine.UI"],
+  "references": [
+    "Relight.Core",
+    "UnityEngine.UI"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
