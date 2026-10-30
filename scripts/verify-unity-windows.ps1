@@ -1,7 +1,7 @@
-# Requires Windows PowerShell 5.1+ and a licensed Unity 6000.1.9f1 install.
+# Requires Windows PowerShell 5.1+ and a licensed Unity 6000.3.27f1 install.
 # Does not upload secrets or modify Unity license activation.
 param(
-    [string]$UnityExe = "C:\Program Files\Unity\Hub\Editor\6000.1.9f1\Editor\Unity.exe",
+    [string]$UnityExe = "C:\Program Files\Unity\Hub\Editor\6000.3.27f1\Editor\Unity.exe",
     [switch]$SkipAndroid
 )
 
