@@ -14,7 +14,14 @@ try{
   assert.equal(await p.locator(".tile").count(),25,"5x5 grid rendered");
   assert.equal(await p.locator("#welcome").evaluate(e=>e.open),true,"first-launch tutorial appears");
   await p.screenshot({path:"relight-mobile-onboarding.png",fullPage:true,animations:"disabled"});
-  await p.locator("#begin").click();
+  const geometry=await p.evaluate(()=>{
+    const b=document.querySelector("#begin").getBoundingClientRect();
+    const d=document.querySelector("#welcome").getBoundingClientRect();
+    const hit=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);
+    return {viewport:[innerWidth,innerHeight],scroll:[document.documentElement.scrollWidth,document.documentElement.scrollHeight],button:[b.left,b.top,b.width,b.height],dialog:[d.left,d.top,d.width,d.height],hit:hit?.id||hit?.tagName,dialogCSS:getComputedStyle(document.querySelector("#welcome")).position};
+  });
+  console.log("ONBOARDING GEOMETRY",JSON.stringify(geometry));
+  await p.locator("#begin").click({timeout:4000});
   assert.equal(await p.locator("#welcome").evaluate(e=>e.open),false,"tutorial closes");
   assert.match(await p.locator("#mission-title").textContent(),/life engine/i);
   assert.match(await p.locator('[data-index="19"]').getAttribute("class"),/suggested/);
