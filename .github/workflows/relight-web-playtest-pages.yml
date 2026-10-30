@@ -62,6 +62,7 @@ jobs:
           name: relight-web-playtest-screenshots
           path: |
             relight-mobile-playtest.png
+            relight-mobile-onboarding.png
             relight-desktop-playtest.png
           if-no-files-found: ignore
 
