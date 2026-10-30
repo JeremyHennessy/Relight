@@ -12,6 +12,7 @@ namespace Relight
         private const string BackupSaveKey = "relight.save.backup.v1";
         private WorldModel world;
         private Machine selected = Machine.Generator;
+        private FirstSessionGoal lastFirstSessionGoal = (FirstSessionGoal)(-1);
         private Text header, subtitle, objective, status, hint;
         private RawImage planetView;
         private RectTransform networkContainerRect;
@@ -228,11 +229,14 @@ namespace Relight
             for (int i = 0; i < names.Length; i++)
             {
                 int index = i;
-                toolButtons[i] = ButtonWithLabel(controls.transform, names[i], names[i], 23, () =>
+                string toolText = kinds[i] == Machine.Empty ?
+                    "REMOVE\nFREE" : names[i] + "\n" + Format(WorldModel.Cost(kinds[i])) + " SCRAP";
+                toolButtons[i] = ButtonWithLabel(controls.transform, names[i], toolText, 23, () =>
                 {
                     selected = kinds[index];
                     repairPending = false;
-                    status.text = selected == Machine.Empty ? "Tap a structure to remove it." : "Tap an empty tile to construct " + selected + ".";
+                    status.text = selected == Machine.Empty ? "Tap a structure to remove it." :
+                        "Build " + selected + " for " + Format(WorldModel.Cost(selected)) + " scrap.";
                     Refresh();
                 });
                 SetAnchors((RectTransform)toolButtons[i].transform, new Vector2(.02f + i*.196f,.25f), new Vector2(.198f + i*.196f,.83f));
@@ -341,6 +345,16 @@ namespace Relight
                 "%\n+" + rates.ScrapPerSecond.ToString("0.0") + "/s   |   POWER " +
                 rates.ConnectedConsumers + "/" + rates.PowerCapacity;
             var goal = world.GetFirstSessionGoal();
+            if (goal != lastFirstSessionGoal)
+            {
+                // Change the selected starter tool only when the objective
+                // advances. Manual player selections remain respected.
+                if (goal == FirstSessionGoal.ImproveRestoration)
+                    selected = Machine.Generator;
+                else if (goal == FirstSessionGoal.ExpandProduction)
+                    selected = Machine.Extractor;
+                lastFirstSessionGoal = goal;
+            }
             if (world.IsRegionReady)
                 objective.text = "REGION READY TO AWAKEN\nTap REVIVE below to unlock the next region";
             else switch (goal)
