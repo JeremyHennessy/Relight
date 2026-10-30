@@ -13,7 +13,7 @@ const stepTitles=[
 ];
 const stepDescriptions=[
   "POWER is already selected. Tap the glowing square beside LIFE to boost the planet's recovery.",
-  "Great! Choose MINE and tap the glowing square. More scrap keeps your restoration running.",
+  "MINE is already selected for you. Tap the glowing NEXT square to add a second scrap miner.",
   "You've built a working network. Watch the recovery meter fill, then tap AWAKEN REGION.",
   "Your first region is alive. Add relays, improve efficiency and revive the next region."
 ];
