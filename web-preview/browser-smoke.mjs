@@ -23,14 +23,15 @@ try{
   console.log("ONBOARDING GEOMETRY",JSON.stringify(geometry));
   await p.locator("#begin").click({timeout:4000});
   assert.equal(await p.locator("#welcome").evaluate(e=>e.open),false,"tutorial closes");
-  // Scroll behavior may animate; inspect the final visible position, not
-  // the first scroll frame. The board must enter the actual viewport.
+  // Wait for the smooth scroll to put a usable part of the board into
+  // view, not merely its first pixel at the bottom of the phone viewport.
   await p.waitForFunction(()=>{
     const rect=document.querySelector("#network-board").getBoundingClientRect();
-    return window.scrollY>200 && rect.top>=0 && rect.top<window.innerHeight;
-  },null,{timeout:6000});
+    return window.scrollY>200 && rect.top>=0 &&
+      rect.top<Math.min(360,window.innerHeight*.5);
+  },null,{timeout:7000});
   const boardTop=await p.locator("#network-board").evaluate(e=>e.getBoundingClientRect().top);
-  console.log("GUIDED BOARD IN VIEW",Math.round(boardTop));
+  console.log("GUIDED BOARD USABLY VISIBLE",Math.round(boardTop));
   assert.match(await p.locator("#mission-title").textContent(),/life engine/i);
   assert.match(await p.locator('[data-index="19"]').getAttribute("class"),/suggested/);
   await p.locator('[data-index="19"]').click();
