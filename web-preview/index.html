@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080f1d">
+<meta name="description" content="Relight: restore an abandoned world. Play the early browser prototype.">
+<title>Relight — Bring the light back</title>
+<link rel="stylesheet" href="./styles.css">
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+</head>
+<body>
+<div class="ambient ambient-one" aria-hidden="true"></div><div class="ambient ambient-two" aria-hidden="true"></div>
+<header class="masthead">
+  <a class="brand" href="#top" aria-label="Relight, return to top">
+    <span class="brand-mark" aria-hidden="true">✧</span><span>RELIGHT</span>
+    <span class="brand-divider"></span><span class="brand-caption">PLANETARY RESTORATION</span>
+  </a>
+  <div class="head-actions">
+    <span class="build-badge"><span class="live-dot"></span> WEB PLAYTEST</span>
+    <button class="text-button" id="how-to-play" type="button">How to play <span aria-hidden="true">↗</span></button>
+  </div>
+</header>
+<main class="layout" id="top">
+  <section class="world-section" aria-label="Planet status">
+    <div class="world-intro">
+      <div class="eyebrow"><span class="eyebrow-dot"></span> MISSION CONTROL <span class="thin-sep">/</span> <span id="sector">SECTOR 01</span></div>
+      <h1>Every world<br>deserves <em>another dawn.</em></h1>
+      <p class="intro-copy">The planet has gone quiet. Restore its energy network, power the machines and watch life return—one region at a time.</p>
+      <div class="resource-grid" aria-label="Your current resources">
+        <div class="resource">
+          <span class="resource-label">SALVAGED SCRAP <span class="resource-icon scrap-ico">⬡</span></span>
+          <div class="resource-value"><strong id="scrap">30</strong><span class="unit">SCRAP</span></div>
+          <span class="resource-note" id="mining-rate">+1.0 per second</span>
+        </div>
+        <div class="resource">
+          <span class="resource-label">NETWORK CAPACITY <span class="resource-icon power-ico">ϟ</span></span>
+          <div class="resource-value"><strong id="power">2 / 2</strong><span class="unit">ONLINE</span></div>
+          <span class="resource-note" id="power-note">All machines powered</span>
+        </div>
+      </div>
+      <div class="progress-block">
+        <div class="progress-heading"><span>BIOSPHERE RECOVERY</span><strong id="restored-percent">0%</strong></div>
+        <div class="track" role="progressbar" id="recovery-progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Region recovery"><span id="recovery-fill"></span></div>
+        <div class="progress-foot"><span id="recovery-rate">Restoring +0.7 / sec</span><span id="region-state">Restoration in progress</span></div>
+      </div>
+      <button id="revive" class="revive-button" disabled type="button"><span class="button-star" aria-hidden="true">✦</span><span id="revive-label">AWAKEN REGION</span><span aria-hidden="true" class="revive-arrow">↗</span></button>
+      <div class="revive-hint" id="revive-hint">Fill the recovery meter to awaken the next region.</div>
+    </div>
+    <div class="planet-scene" aria-label="Live view of the recovering planet">
+      <div class="orbital orb-one"></div><div class="orbital orb-two"></div>
+      <span class="star star-a"></span><span class="star star-b"></span><span class="star star-c"></span><span class="star star-d"></span><span class="star star-e"></span>
+      <div class="planet-glow"></div>
+      <canvas id="planet" width="520" height="520" role="img" aria-label="Procedural planet changing as recovery progresses"></canvas>
+      <div class="planet-name"><span class="small-cross">✳</span><div><strong id="planet-name">AURORA-9</strong><small id="planet-caption">ATMOSPHERE: DORMANT</small></div></div>
+      <div class="planet-tag" id="planet-tag"><span class="tag-dot"></span> RESTORATION ACTIVE</div>
+    </div>
+  </section>
+
+  <section class="mission-banner" aria-label="Current guided objective">
+    <div class="mission-number"><span>FIELD<br>DIRECTIVE</span><strong id="mission-number">01</strong></div>
+    <div class="mission-copy"><div class="eyebrow mission-eyebrow">YOUR NEXT MOVE</div><h2 id="mission-title">Give the life engine a boost.</h2><p id="mission-description">The starter network is live. Select <b>POWER</b> below, then tap the glowing tile beside the green LIFE machine.</p></div>
+    <div class="mission-progress" id="mission-stages" aria-label="Mission progress"><span class="active"></span><span></span><span></span></div>
+  </section>
+
+  <section class="workshop" aria-label="Network construction and upgrades">
+    <div class="network-card">
+      <div class="section-heading">
+        <div><div class="eyebrow">THE GRID <span class="thin-sep">/</span> NETWORK 5×5</div><h2>Build the connection.</h2></div>
+        <div class="network-key"><span class="key-on"></span> CONNECTED <span class="key-off"></span> OFFLINE</div>
+      </div>
+      <div class="board-wrap"><div class="network-board" id="network-board">
+        <svg class="network-lines" id="network-lines" viewBox="0 0 500 500" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div id="tiles" class="tiles" role="group" aria-label="Place machines on the 5 by 5 energy grid"></div>
+      </div></div>
+      <div class="board-foot"><div><span class="pulse-key">●</span> <span id="selected-tool-text">POWER selected</span></div><button class="link-button" id="repair" type="button">Reset grid ↺</button></div>
+    </div>
+    <div class="sidebar">
+      <div class="tools-card">
+        <div class="section-heading"><div><div class="eyebrow">02 / CONSTRUCTION</div><h2>Choose your machine.</h2></div></div>
+        <p class="tools-caption">Pick a tool, then tap an empty square on the grid. Every choice changes the network.</p>
+        <div class="tool-list" id="tool-list">
+          <button class="tool" data-machine="5" type="button" aria-pressed="true"><span class="tool-icon tool-generator">ϟ</span><span class="tool-copy"><strong>Power generator</strong><small>More energy. Boosts nearby life engines.</small></span><span class="tool-cost">15 <i>⌬</i></span></button>
+          <button class="tool" data-machine="3" type="button" aria-pressed="false"><span class="tool-icon tool-extractor">⛏</span><span class="tool-copy"><strong>Scrap miner</strong><small>Collects the material for new builds.</small></span><span class="tool-cost">12 <i>⌬</i></span></button>
+          <button class="tool" data-machine="2" type="button" aria-pressed="false"><span class="tool-icon tool-relay">◇</span><span class="tool-copy"><strong>Energy relay</strong><small>Extends the grid. Boosts nearby miners.</small></span><span class="tool-cost">4 <i>⌬</i></span></button>
+          <button class="tool" data-machine="4" type="button" aria-pressed="false"><span class="tool-icon tool-restorer">✳</span><span class="tool-copy"><strong>Life engine</strong><small>Turns salvaged scrap into thriving land.</small></span><span class="tool-cost">18 <i>⌬</i></span></button>
+          <button class="tool" data-machine="0" type="button" aria-pressed="false"><span class="tool-icon tool-remove">×</span><span class="tool-copy"><strong>Remove</strong><small>Clear a structure. No refund.</small></span><span class="tool-cost free-cost">FREE</span></button>
+        </div>
+      </div>
+      <div class="upgrades-card">
+        <div class="section-heading"><div><div class="eyebrow">03 / OPTIMIZATION</div><h2>Strengthen the system.</h2></div></div>
+        <div class="upgrade-grid">
+          <button id="upgrade-mining" class="upgrade-button" type="button"><span class="upgrade-icon">↗</span><strong>Mining efficiency</strong><small id="mining-level">Level 0</small><span class="upgrade-price" id="mining-price">20 SCRAP <span>＋</span></span></button>
+          <button id="upgrade-power" class="upgrade-button" type="button"><span class="upgrade-icon">ϟ</span><strong>Power capacity</strong><small id="power-level">Level 0</small><span class="upgrade-price" id="power-price">20 SCRAP <span>＋</span></span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</main>
+<footer><span>RELIGHT <span class="foot-em">/</span> EARLY WEB PLAYTEST</span><span>Original prototype · No ads · Saves in this browser · Not the Unity release</span></footer>
+<dialog id="welcome" class="intro-dialog" aria-labelledby="welcome-title">
+  <div class="dialog-content">
+    <div class="dialog-mark">✦</div><div class="eyebrow">WELCOME TO RELIGHT</div>
+    <h2 id="welcome-title">One spark can bring a world back.</h2>
+    <p>You inherit a damaged energy network. Your job is simple: <b>power the life engines</b>, mine scrap to expand, and bring the planet back to life.</p>
+    <div class="guide-steps">
+      <div><span>01</span><strong>Choose POWER</strong><small>Your first tool is already selected.</small></div>
+      <div><span>02</span><strong>Tap the glowing square</strong><small>Build beside the green life engine.</small></div>
+      <div><span>03</span><strong>Watch the world recover</strong><small>Follow the next directive, then awaken the region.</small></div>
+    </div>
+    <button class="start-button" id="begin" type="button">LET'S RESTORE THIS WORLD <span>↗</span></button>
+    <button id="dismiss-help" class="quiet-button" type="button">Close guide</button>
+  </div>
+</dialog>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>
