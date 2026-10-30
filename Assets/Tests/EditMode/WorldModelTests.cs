@@ -49,6 +49,19 @@ namespace Relight.Tests
         }
 
         [Test]
+        public void CorruptTimestampsAndUnknownMachinesAreRejected()
+        {
+            var game = new WorldModel(WorldState.NewWorld());
+            Assert.IsFalse(game.Place(0, (Machine)999));
+            var state = WorldState.NewWorld();
+            state.TotalPlayedSeconds = double.NaN;
+            Assert.IsFalse(WorldModel.Validate(state));
+            state = WorldState.NewWorld();
+            state.SavedAtUnix = -1;
+            Assert.IsFalse(WorldModel.Validate(state));
+        }
+
+        [Test]
         public void InvalidSaveFallsBackToFreshWorld()
         {
             var state = WorldState.NewWorld();
