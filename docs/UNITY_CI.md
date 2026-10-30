@@ -1,41 +1,42 @@
-# Relight: actual Unity editor verification
+# Relight Unity CI: verification levels and licensing caveat
 
-## Why there are two verification levels
+**2026-10-30 correction:** The original Unity CI onboarding guidance assumed a Unity Personal `.ulf` file and a standalone Unity password. That is not reliably compatible with current Unity Personal **named-user** licensing and Google sign-in.
 
-**Core verification (enabled):** GitHub Actions compiles the Unity-independent world model and runs gameplay checks. It parses Unity C# files and validates project configuration, but cannot confirm engine APIs, rendering, touch input, Unity Test Framework execution or mobile packaging.
+## Verification levels
 
-**Unity Editor verification (opt-in):** `.github/workflows/unity-editor-verification.yml` uses the established GameCI Unity Test Runner to import Relight with **Unity 6000.1.9f1**, compile game scripts in the actual engine and run EditMode tests. It is disabled by default until legitimate Unity licensing is configured. A skipped run does *not* count as a pass.
+- **Standalone Core verification:** Automatically compiles the Unity-free gameplay model and executes source-level assertions, Unity C# syntax parsing and JSON configuration checks. It does **not** run Unity or produce an APK.
+- **GameCI Unity Editor verification:** `.github/workflows/unity-editor-verification.yml` is opt-in and has been **skipped**, not passed. It needs a compatible, supported Unity license activation route.
+- **GameCI Android Development APK:** `.github/workflows/unity-android-development.yml` is also opt-in. It has **not** built an APK.
+- **Local Windows Unity Editor:** Uses the activated Unity Hub Personal license on the developer's Windows machine. This is the recommended first actual engine verification route.
+- **Unity Build Automation (UBA):** A separate Unity-hosted cloud service can connect to GitHub through the Unity Dashboard without using GameCI's `UNITY_LICENSE` secret mechanism. Eligibility/available build minute limits must be checked in the Unity Dashboard.
 
-## Enable the engine check without sharing account secrets in chat
+## Licensing facts verified against Unity's own documents
 
-1. In **Repository > Settings > Secrets and variables > Actions**, configure the Unity secrets required by your applicable license. GameCI documents `UNITY_EMAIL`, `UNITY_PASSWORD` and either `UNITY_LICENSE` (Personal) or `UNITY_SERIAL` (professional). Never commit these values or paste them into issues/chats.
-2. Under **Variables**, create repository variable `RELIGHT_UNITY_CI` with the exact value `enabled`.
-3. Push or update a `feat/**` or `fix/**` development branch. The Unity workflow is designed to run automatically for those branches when enabled.
-4. Review the **Unity Editor verification (opt-in)** workflow logs and artifacts. The GameCI runner itself also requires successful account/license activation; configured secrets alone do not prove activation.
-5. A successful Unity test run establishes **Unity editor import and EditMode tests only**. It does not mean Android or iOS builds are functional.
+Unity Personal activates on sign-in to Unity Hub. Unity lists Windows named-user licenses under `%LOCALAPPDATA%\Unity\licenses\UnityEntitlementLicense.xml`, and serial-based license files under `%PROGRAMDATA%\Unity\Unity_lic.ulf`. Unity's manual activation documentation states that Personal manual activation is not supported.
 
-The `workflow_dispatch` event is also declared; GitHub normally exposes manual dispatch for workflows present on the default branch. Until this workflow reaches `main`, branch-push triggering is the intended route.
+GameCI's third-party activation guide still describes a Personal `.ulf` process. Do not assume that a missing `.ulf` is an error, do not substitute `UnityEntitlementLicense.xml` for `UNITY_LICENSE`, and do not create or share a password solely to satisfy a legacy workflow. Current GameCI compatibility with this account has **not** been established.
 
-Official reference: https://game.ci/docs/github/test-runner/
+## Safety gate
 
-## Local Windows alternative (no GitHub licensing setup required)
+Both GameCI workflows have an additional guard: `RELIGHT_GAMECI_LICENSE_CONFIRMED=yes` must be set before they can run, *in addition to* `RELIGHT_UNITY_CI=enabled` or `RELIGHT_ANDROID_CI=enabled`. This guard is not a substitute for real license compatibility or a passing build and must not be set until that compatibility is confirmed with evidence.
 
-Use Unity Hub's existing activated Unity 6000.1.9f1 installation with Android Build Support. From repository root:
+## Suggested first successful Unity verification
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\verify-unity-windows.ps1
-```
+1. Sign into Unity Hub using Google and confirm Personal activation.
+2. Open the checked-out project using Unity 6000.1.9f1, run Unity's EditMode tests and inspect the scene.
+3. Run `scripts/verify-unity-windows.ps1` after closing any open Editor instance.
+4. Inspect new XML results, logs, APK output, and physical-device behavior.
+5. Only after that, choose whether to configure a cloud build (Unity Build Automation may be preferable).
 
-Run with `-SkipAndroid` to test only the Editor. An Editor invocation needs a license already valid on that machine. Check `Builds/verification/` for test XML and logs. The script checks that the result is new, at least 13 EditMode tests are discovered, zero fail, and (if selected) that a fresh Android development APK exists.
+For step-by-step details, see [First Unity build](FIRST_UNITY_BUILD.md).
 
-## Actual mobile gates still required
+## Current status
 
-- Install Android development APK and test touch input, safe areas, visual presentation and pause/resume.
-- Confirm offline save/recovery does not duplicate earnings or lose progress.
-- Produce iOS build using macOS and Xcode and test on iPhone.
-- Collect screenshots and explicit visual approval before treating the UI as stable.
-- Production signing, store policy checks and release approval are separate.
+Source tests have passed previously. **No Unity Editor tests, real device screenshots, or APK have been verified** through these workflows.
 
-## Status
-
-As of 2026-10-30, no licensed Unity editor run, device screenshots or mobile build have been produced here. Do not report one until there is a successful editor/build job with logs or actual device evidence.
+Official sources:
+- https://docs.unity.com/en-us/hub/manage-license
+- https://docs.unity.com/en-us/engine/6000.3/manual/get-started/install-and-upgrade/licenses-and-activation/activation-faq
+- https://docs.unity.com/en-us/engine/6000.3/manual/get-started/install-and-upgrade/licenses-and-activation/license-activation-methods
+- https://docs.unity.com/en-us/build-automation
+- https://game.ci/docs/github/activation/

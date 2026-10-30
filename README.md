@@ -25,6 +25,10 @@ One spark brings a dead world back to life. Build an energy network, connect min
 - `docs/GAME_DESIGN.md`: concrete mechanics and progression plan.
 - `docs/BUILD_AND_RELEASE.md`: editor setup, validation gates and store blockers.
 
+## Unity Personal sign-in and CI licensing
+
+Unity Personal normally activates in Unity Hub when the account signs in, including Google sign-in. Do **not** assume a modern Personal account has a serial-based `.ulf` file; the earlier GameCI secret guidance has been corrected. For the first real build, use local Unity Hub or review Unity Build Automation before configuring third-party license secrets. See [corrected first build guide](docs/FIRST_UNITY_BUILD.md).
+
 ## Run in Unity
 1. Open repository in **Unity 6000.1.9f1**, using Unity Hub with required modules.
 2. Let packages import. Resolve all Console errors before proceeding.
