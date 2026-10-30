@@ -13,6 +13,8 @@ namespace Relight
         private Machine selected = Machine.Generator;
         private Text header, subtitle, objective, status, hint;
         private RawImage planetView;
+        private Image headerBackground;
+        private float regionCelebrationSeconds;
         private Texture2D planetTexture;
         private int lastPlanetKey = -1;
         private bool repairPending;
@@ -47,16 +49,30 @@ namespace Relight
             }
             catch (Exception error) { Debug.LogWarning("Relight save rejected: " + error.Message); }
             world = new WorldModel(saved);
+            int beforeOffline = world.State.Region;
             double away = world.ApplyOffline(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             BuildUI();
-            status.text = away > 1 ? "Welcome back. Offline production: " + Format(away) + " seconds." : "Restore the first region.";
+            if (world.State.Region > beforeOffline)
+                status.text = "Welcome back! " + (world.State.Region - beforeOffline) + " region(s) revived offline.";
+            else
+                status.text = away > 1 ? "Welcome back. Offline production: " + Format(away) + " seconds." : "Restore the first region.";
             Refresh();
         }
 
         private void Update()
         {
             double dt = Math.Min(Time.unscaledDeltaTime, 0.25f);
+            int previousRegion = world.State.Region;
             world.Tick(dt);
+            if (world.State.Region > previousRegion)
+                CelebrateRestoration(world.State.Region - previousRegion);
+            if (regionCelebrationSeconds > 0f && headerBackground != null)
+            {
+                regionCelebrationSeconds = Mathf.Max(0f, regionCelebrationSeconds - Time.unscaledDeltaTime);
+                float pulse = Mathf.Sin((3f - regionCelebrationSeconds) * 7f) * .5f + .5f;
+                headerBackground.color = Color.Lerp(Panel, new Color(.12f,.43f,.35f),
+                    (regionCelebrationSeconds / 3f) * pulse);
+            }
             refreshClock += Time.unscaledDeltaTime;
             saveClock += Time.unscaledDeltaTime;
             if (refreshClock >= 0.25f) { Refresh(); refreshClock = 0; }
@@ -68,8 +84,11 @@ namespace Relight
             if (paused) Save();
             else if (world != null)
             {
+                int previousRegion = world.State.Region;
                 double away = world.ApplyOffline(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-                if (away > 1 && status != null)
+                if (world.State.Region > previousRegion)
+                    CelebrateRestoration(world.State.Region - previousRegion);
+                else if (away > 1 && status != null)
                     status.text = "Offline production: " + Format(away) + " seconds.";
                 Refresh();
             }
@@ -119,6 +138,7 @@ namespace Relight
             // Large planet preview and clear first-session mission are the
             // primary visual hierarchy. The network remains one-thumb playable.
             var top = Block(safe.transform, "Header", new Vector2(.04f,.75f), new Vector2(.96f,.985f), Panel);
+            headerBackground = top.GetComponent<Image>();
             header = Label(top.transform, "RELIGHT", 56, TextAnchor.MiddleLeft, Color.white);
             SetAnchors(header.rectTransform, new Vector2(.04f,.70f), new Vector2(.61f,.97f));
             subtitle = Label(top.transform, "", 31, TextAnchor.MiddleLeft, Accent);
@@ -186,6 +206,13 @@ namespace Relight
             SetAnchors(status.rectTransform, new Vector2(.02f,0), new Vector2(.76f,1));
             var repair = ButtonWithLabel(bottom.transform, "Emergency Repair", "REPAIR", 23, Repair);
             SetAnchors((RectTransform)repair.transform, new Vector2(.77f,.10f), new Vector2(.99f,.90f));
+        }
+
+        private void CelebrateRestoration(int count)
+        {
+            regionCelebrationSeconds = 3f;
+            status.text = count == 1 ? "REGION REVIVED! Keep the network growing." :
+                count + " REGIONS REVIVED! Your world is awakening.";
         }
 
         private void TapTile(int index)
