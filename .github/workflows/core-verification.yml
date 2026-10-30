@@ -45,7 +45,7 @@ jobs:
           }
           # Check the exact Unity test-invocation contract, not just script syntax.
           $source = Get-Content -LiteralPath "scripts/verify-unity-windows.ps1" -Raw
-          $testInvoke = [regex]::Match($source, '(?s)Invoke-Unity "Execute Unity EditMode tests" @\\((.*?)\\)')
+          $testInvoke = [regex]::Match($source, '(?s)Invoke-Unity "Execute Unity EditMode tests" @\((.*?)\)')
           if (-not $testInvoke.Success) { throw "Unity test invocation not found." }
           if ($testInvoke.Groups[1].Value -match '"-quit"') {
             throw "-quit is unsupported together with Unity -runTests."
