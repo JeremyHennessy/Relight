@@ -27,6 +27,8 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Compile and run standalone core checks
         run: dotnet run --configuration Release --project verification/Relight.CoreChecks/Relight.CoreChecks.csproj
+      - name: Parse all Unity C# sources with Roslyn
+        run: dotnet run --configuration Release --project verification/Relight.SyntaxChecks/Relight.SyntaxChecks.csproj
       - name: Verify Unity manifest and assemblies are parseable JSON
         run: |
           python3 - <<'PY'
