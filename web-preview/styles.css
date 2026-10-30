@@ -22,13 +22,18 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
 @media(max-width:370px){.build-badge{display:none}.world-intro h1{font-size:31px}.tool-icon{width:38px;height:38px}.tool-copy small{font-size:9px}.resource-label{font-size:7px}.mission-banner{padding:11px}.tile .tile-name{font-size:6px}.planet-scene{min-height:265px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 
-/* On phones, transient action feedback sits at the top edge rather than over
-   the bottom rows of the construction grid. It never blocks pointer input. */
+/* Phone action feedback is reserved beside the construction tools, so it
+   cannot float across either the mission card or the grid. Desktop keeps the
+   original non-interactive toast. */
+.mobile-feedback{display:none}
 @media(max-width:650px){
-  .toast{top:calc(12px + env(safe-area-inset-top,0px));bottom:auto;
-    max-width:min(calc(100vw - 24px),360px);min-width:0;padding:11px 15px;
-    font-size:12px;transform:translate(-50%,-110px)}
-  .toast.visible{transform:translate(-50%,0)}
+  .mobile-feedback{display:flex;align-items:center;min-height:38px;
+    margin-top:12px;padding:8px 11px;border:1px solid rgba(96,213,181,.30);
+    border-radius:9px;background:rgba(27,68,70,.52);font-size:10px;
+    line-height:1.45;color:#b9f6dd;font-weight:700}
+  .mobile-feedback.warning{border-color:#dc998c;background:rgba(108,52,49,.33);
+    color:#ffcfbd}
+  .toast{display:none}
 }
 
 /* Compact machine controls live beside the grid on phones. Desktop retains
