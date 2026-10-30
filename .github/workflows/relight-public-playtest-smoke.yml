@@ -1,0 +1,64 @@
+name: Relight public web playtest — HTTP and Chromium smoke
+on:
+  push:
+    branches:
+      - feat/relight-first-play-ux-v2
+    paths:
+      - .github/workflows/relight-public-playtest-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-website:
+    name: Verify published game is available and genuinely playable
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check real public HTTP responses and expected assets
+        env:
+          RELIGHT_BROWSER_URL: https://relight-ux-playtest.pages.dev
+        run: |
+          set -euo pipefail
+          for asset in / /app.mjs /model.mjs /styles.css /favicon.svg; do
+            dest="/tmp/relight-live-$(echo "${asset}" | tr '/.' '__')"
+            echo "Fetching ${RELIGHT_BROWSER_URL}${asset}"
+            curl --fail --show-error --silent --location --retry 3 --retry-delay 3 --max-time 20 \
+              "${RELIGHT_BROWSER_URL}${asset}" -o "${dest}"
+            test -s "${dest}"
+          done
+          grep -q '<title>Relight' /tmp/relight-live-_
+          grep -q 'from "./model.mjs"' /tmp/relight-live-_app_mjs
+          # Prove the deployed site includes the latest inline-feedback fix,
+          # rather than showing a stale prior Cloudflare revision.
+          grep -Fq 'MINE is already selected for you' /tmp/relight-live-_app_mjs
+          grep -Fq 'function mobileFeedback(message,warning=false)' /tmp/relight-live-_app_mjs
+          grep -Fq '.mobile-feedback{display:none}' /tmp/relight-live-_styles_css
+          grep -Fq 'id="mobile-feedback"' /tmp/relight-live-_
+          echo "PASS: published HTTPS assets include accessible inline mobile feedback"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chromium browser test tooling
+        run: |
+          npm install --prefix web-preview --no-save --no-package-lock playwright@1.56.1
+          ./web-preview/node_modules/.bin/playwright install --with-deps chromium
+      - name: Play the hosted game on phones and desktop
+        env:
+          RELIGHT_BROWSER_URL: https://relight-ux-playtest.pages.dev
+        run: node web-preview/browser-smoke.mjs
+      - name: Archive independent hosted gameplay screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relight-live-web-screenshots
+          path: |
+            relight-mobile-onboarding.png
+            relight-mobile-playtest.png
+            relight-mobile-awakening-ready.png
+            relight-mobile-awakened.png
+            relight-narrow-320-playtest.png
+            relight-desktop-playtest.png
+          if-no-files-found: ignore

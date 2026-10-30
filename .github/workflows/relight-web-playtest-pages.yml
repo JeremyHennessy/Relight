@@ -1,0 +1,127 @@
+name: Relight Web Playtest — verify and publish
+on:
+  push:
+    branches:
+      - feat/relight-first-play-ux-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relight-web-playtest-pages
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Browser gameplay model and interface checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check static web JavaScript parses
+        run: |
+          node --check web-preview/model.mjs
+          node --check web-preview/app.mjs
+          node --check web-preview/model.test.mjs
+      - name: Run deterministic playable-game tests
+        run: node --test web-preview/model.test.mjs
+      - name: Check public static asset files
+        run: |
+          test -s web-preview/index.html
+          test -s web-preview/styles.css
+          test -s web-preview/favicon.svg
+          grep -q 'type="module" src="./app.mjs"' web-preview/index.html
+      - name: Retain self-contained source for independent browser diagnosis
+        uses: actions/upload-artifact@v4
+        with:
+          name: relight-web-source
+          path: web-preview/
+          if-no-files-found: error
+
+  browser:
+    name: Run actual mobile and desktop Chromium playtest
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Playwright and Chromium (test runner only)
+        run: |
+          npm install --prefix web-preview --no-save --no-package-lock playwright@1.56.1
+          ./web-preview/node_modules/.bin/playwright install --with-deps chromium
+      - name: Test UI in real browser
+        run: |
+          python3 -m http.server 8765 --directory web-preview > /tmp/relight-web-server.log 2>&1 &
+          sleep 2
+          node web-preview/browser-smoke.mjs
+      - name: Keep mobile/desktop screenshots for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relight-web-playtest-screenshots
+          path: |
+            relight-mobile-playtest.png
+            relight-mobile-onboarding.png
+            relight-narrow-320-playtest.png
+            relight-mobile-awakening-ready.png
+            relight-mobile-awakened.png
+            relight-desktop-playtest.png
+          if-no-files-found: ignore
+
+  deploy:
+    # GitHub Pages is intentionally not yet enabled for this repo. Avoid
+    # failing a tested browser build before this optional destination is ready.
+    # Enable Settings > Pages > Source = GitHub Actions, then set the Actions
+    # repository variable RELIGHT_PUBLISH_GITHUB_PAGES=true to opt in.
+    if: ${{ vars.RELIGHT_PUBLISH_GITHUB_PAGES == 'true' }}
+    name: Publish Web Playtest to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: [verify, browser]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check if GitHub Pages uses Actions publishing
+        id: pages-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          code=$(curl --silent --show-error --location --max-time 15 \
+            --output /tmp/relight-pages.json --write-out '%{http_code}' \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages" || true)
+          if [ "$code" = "200" ] && python3 -c \
+            'import json,sys; sys.exit(0 if json.load(open("/tmp/relight-pages.json")).get("build_type")=="workflow" else 1)'; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+            echo 'GitHub Pages uses workflow publishing; deployment is enabled.'
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub Pages is not configured for GitHub Actions (site HTTP ${code}). Set Settings > Pages > Build and deployment > Source = GitHub Actions to enable this optional second publisher. Cloudflare staging is separate and already live."
+          fi
+      - name: Configure Pages
+        if: steps.pages-check.outputs.ready == 'true'
+        uses: actions/configure-pages@v5
+      - name: Upload browser application (no Unity build or secrets)
+        if: steps.pages-check.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web-preview
+      - name: Deploy to Pages
+        if: steps.pages-check.outputs.ready == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
