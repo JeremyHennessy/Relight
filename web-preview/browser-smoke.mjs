@@ -114,6 +114,28 @@ try{
     "region advancement is preserved across reload");
   await mobile.close();
 
+  // Smaller Android handsets must still expose five usable one-thumb build
+  // controls and a clickable tutorial without horizontal overflow.
+  const narrow=await browser.newContext({
+    viewport:{width:320,height:640},deviceScaleFactor:1,isMobile:true,hasTouch:true
+  });
+  const small=await narrow.newPage();
+  small.on("pageerror",err=>errors.push(err.message));
+  small.on("console",msg=>{if(msg.type()==="error")errors.push(msg.text());});
+  await small.goto(origin,{waitUntil:"networkidle"});
+  assert.equal(await small.locator("#welcome").evaluate(e=>e.open),true);
+  await small.locator("#begin").click({timeout:6000});
+  const narrowTool=await small.locator('.quick-tool[data-machine="5"]').boundingBox();
+  assert.ok(narrowTool.width>=44&&narrowTool.height>=44,
+    "320px handset tool buttons must stay touch-friendly");
+  assert.ok((await small.evaluate(()=>document.documentElement.scrollWidth))<=320,
+    "320px handset has no horizontal overflow");
+  await small.locator('.quick-tool[data-machine="5"]').click();
+  await small.locator('[data-index="19"]').click();
+  assert.match(await small.locator("#mission-title").textContent(),/scrap miner/i);
+  await small.screenshot({path:"relight-narrow-320-playtest.png",fullPage:true,animations:"disabled"});
+  await narrow.close();
+
   const desktop=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
   const d=await desktop.newPage();
   d.on("pageerror",err=>errors.push(err.message));
