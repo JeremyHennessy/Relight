@@ -10,12 +10,17 @@ on:
       - 'build/**'
   workflow_dispatch:
 
+# IMPORTANT: Unity Personal named-user licensing may not support the legacy
+# GameCI UNITY_LICENSE (.ulf) activation path. Unity's own documentation says
+# to activate Personal through Unity Hub. Do not enable GameCI until a
+# compatible license mechanism has been independently verified for this account.
+# See docs/FIRST_UNITY_BUILD.md and docs/UNITY_CI.md.
 permissions:
   contents: read
 
 jobs:
   unity-editmode:
-    if: ${{ vars.RELIGHT_UNITY_CI == 'enabled' }}
+    if: ${{ vars.RELIGHT_UNITY_CI == 'enabled' && vars.RELIGHT_GAMECI_LICENSE_CONFIRMED == 'yes' }}
     name: Unity 6000.1.9f1 EditMode tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
