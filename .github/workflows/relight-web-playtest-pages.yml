@@ -35,6 +35,12 @@ jobs:
           test -s web-preview/styles.css
           test -s web-preview/favicon.svg
           grep -q 'type="module" src="./app.mjs"' web-preview/index.html
+      - name: Retain self-contained source for independent browser diagnosis
+        uses: actions/upload-artifact@v4
+        with:
+          name: relight-web-source
+          path: web-preview/
+          if-no-files-found: error
 
   browser:
     name: Run actual mobile and desktop Chromium playtest
