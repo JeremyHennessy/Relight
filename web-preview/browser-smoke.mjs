@@ -140,9 +140,11 @@ try{
   assert.match(await small.locator("#mission-title").textContent(),/scrap miner/i);
   assert.match(await small.locator("#mission-description").textContent(),/MINE is already selected for you/);
   const narrowToast=await small.locator("#toast").boundingBox();
+  const narrowBoard=await small.locator("#network-board").boundingBox();
+  console.log("NARROW TOAST GEOMETRY",JSON.stringify({toast:narrowToast,board:narrowBoard,innerHeight:640}));
+  await small.screenshot({path:"relight-narrow-320-playtest.png",fullPage:true,animations:"disabled"});
   assert.ok(narrowToast && narrowToast.y>=0 && narrowToast.y+narrowToast.height<=100,
     "320px narrow-screen notifications must not obscure the lower play grid");
-  await small.screenshot({path:"relight-narrow-320-playtest.png",fullPage:true,animations:"disabled"});
   await narrow.close();
 
   const desktop=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
