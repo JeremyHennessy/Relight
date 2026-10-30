@@ -1,59 +1,73 @@
-# First real Relight Unity build — setup and evidence gate
+# First real Relight Unity build — corrected licensing guidance
+**Reviewed: 2026-10-30.** Source branch: `build/opt-in-android-development-apk` (draft PR #10). No actual Unity Editor run, mobile APK, or device test has yet been verified.
 
-**Checkpoint:** 2026-10-30. Current development branch: `build/opt-in-android-development-apk`, stacked above `feat/first-session-polish-and-pacing` (PR #9). This branch is **not merged to main**. Unity source has not yet been compiled by the engine or run on a phone.
+## Important correction: Unity 6 Personal licenses and GameCI
 
-## Recommended: opt-in GitHub Unity builds
+Our original instructions assumed that a Unity Personal license would create `C:\ProgramData\Unity\Unity_lic.ulf`, and asked the owner to use this file as GitHub's `UNITY_LICENSE` secret. **That is not a reliable assumption for a modern Unity Personal installation.**
 
-You do **not** need to install the full Unity editor on Windows to use the hosted GitHub runner, but **Unity must be properly activated**. With a Unity Personal license, GameCI's documented setup starts with Unity Hub activation on your machine.
+Unity's current official documentation says:
+- Unity Personal is activated by signing in to **Unity Hub**, including a Unity account accessed through Google sign-in. Usually no extra license activation is necessary.
+- Unity Personal uses a **named-user** license; on Windows the entitlement is normally at `%LOCALAPPDATA%\Unity\licenses\UnityEntitlementLicense.xml`.
+- The older `%PROGRAMDATA%\Unity\Unity_lic.ulf` path is documented for **serial-based** licenses.
+- Manual activation is not supported for Unity Personal.
 
-### One-time steps requiring the repository owner
+GameCI's activation guide still describes a Personal `.ulf` workflow. Until we have direct, valid evidence that the documented GameCI method works with this particular Unity account and Unity Editor version, **do not** create a new Unity password, upload a named-user XML file as `UNITY_LICENSE`, or turn on the GitHub GameCI workflows based on these old assumptions. Never paste a license, password, PAT or XML entitlement in chat or repository source.
 
-1. Create/sign in to a Unity account and install Unity Hub: https://unity.com/download.
-2. In Unity Hub, activate the appropriate license. For a free Personal license, open Hub **Preferences > Licenses > Add > Get a free personal license**. If using Unity Pro, use its licensed serial instead. Always comply with Unity license terms.
-3. If using Personal, read the license file `C:\ProgramData\Unity\Unity_lic.ulf` (Windows) **on your own machine**. Do **not** commit it, post it to a GitHub issue, or paste it in ChatGPT.
-4. Navigate to `https://github.com/JeremyHennessy/Relight/settings/secrets/actions`. Under **Repository secrets**, add:
-   - `UNITY_EMAIL`: your Unity account email
-   - `UNITY_PASSWORD`: your Unity account password
-   - `UNITY_LICENSE`: content of your `.ulf` file **for Personal**; **OR** `UNITY_SERIAL`: your Pro license serial for a professional license
-5. Under **Repository variables**, initially set `RELIGHT_UNITY_CI` to `enabled`. This enables an actual Unity Editor test runner on feature/build branch pushes.
-6. After the Editor tests pass, set `RELIGHT_ANDROID_CI` to `enabled` and push a new change to the branch (or commit a dedicated no-code build trigger) to launch a development Android APK build.
-7. In the repository's **Actions** tab, inspect `Unity Editor verification (opt-in)` and `Unity Android development APK (opt-in)`. Successful build artifacts are uploaded under the Android run.
+Primary sources:
+- Unity Hub Personal licensing: https://docs.unity.com/en-us/hub/manage-license
+- Unity license file types: https://docs.unity.com/en-us/engine/6000.3/manual/get-started/install-and-upgrade/licenses-and-activation/activation-faq
+- Unity activation methods: https://docs.unity.com/en-us/engine/6000.3/manual/get-started/install-and-upgrade/licenses-and-activation/license-activation-methods
+- Potentially conflicting GameCI instructions: https://game.ci/docs/github/activation/
 
-**Note:** Hosted Unity jobs require CI runner time and a supported Unity editor image; license setup alone does not guarantee a passing editor import or build. The test and build jobs are opt-in so they do not consume resources on every experimental commit. Workflows placed only on feature branches may not offer manual Run workflow in GitHub until present on `main`; branch pushes are the intended trigger here.
+## Recommended first proof: Windows + Unity Hub
 
-Sources: https://game.ci/docs/github/activation/, https://game.ci/docs/github/test-runner/, https://game.ci/docs/github/builder/.
+This is the lowest-risk way to verify the actual game without a new password or a guessed license file.
 
-### Expected GitHub artifact
+1. Install [Unity Hub](https://unity.com/download) and **sign in using Google as normal**. Check Hub Settings > Licenses to verify Unity Personal is active.
+2. Install **Unity Editor 6000.1.9f1** and the Android Build Support module including SDK/NDK tools and OpenJDK. We preserve the repository's target version until a real import/build proves whether any change is necessary.
+3. From PowerShell, clone the project and select the current reviewable branch:
 
-- Workflow: `Unity Android development APK (opt-in)`
-- Builder: `game-ci/unity-builder@v4`
-- Unity version: `6000.1.9f1`
-- Build method: `Relight.Editor.RelightProjectSetup.BuildAndroid`, which generates and registers the empty boot scene before creating a development APK
-- Internal build path: `Builds/Relight-dev.apk`
-- GitHub artifact name: `Relight-Android-Dev-<commitSHA>`
-- **Not** an App Store or Play Store signed production build
+   ```powershell
+   git clone https://github.com/JeremyHennessy/Relight.git
+   cd Relight
+   git switch build/opt-in-android-development-apk
+   ```
 
-Any failed, skipped, or absent job is **not verified**. After a successful APK build, test touch, performance, safe area, save/offline logic and rendering on Android.
+4. In Unity Hub > **Add project from disk**, select the `Relight` repository directory. Open it and check Unity Console for compile/package errors.
+5. In the Editor select **Relight > Initialize Playable Scene**, then open `Assets/Scenes/Relight.unity` and press Play. Inspect actual UI before assuming it renders correctly.
+6. Close Unity Editor to avoid simultaneous processes using one project. In PowerShell at repo root, run:
 
-## Alternative: local Windows build
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\scripts\verify-unity-windows.ps1
+   ```
 
-1. Install Unity Hub and **Unity Editor 6000.1.9f1** from https://unity.com/releases/editor/whats-new/6000.1.9f1.
-2. Install Editor modules **Android Build Support**, **Android SDK & NDK Tools**, and **OpenJDK**.
-3. Clone Relight: `git clone https://github.com/JeremyHennessy/Relight.git`; `cd Relight`; `git switch build/opt-in-android-development-apk`.
-4. Launch Unity Hub > Add project from disk > select the repository root. Wait for asset/package import and check Console errors.
-5. Close the Unity Editor before running a second headless Unity instance against the same project.
-6. From PowerShell in repo root:
-   `powershell -ExecutionPolicy Bypass -File .\scripts\verify-unity-windows.ps1`
-7. Inspect `Builds/verification/` for import/test/build logs and EditMode XML. The verification script expects **17** tests and a fresh `Builds/Relight-dev.apk`.
-8. Install development APK on an Android phone, capture actual screenshots, and record any defects. A Unity compile pass alone is not a mobile verification.
+   The script attempts 17 Unity EditMode tests and builds `Builds/Relight-dev.apk`. Inspect `Builds/verification/` logs and XML. The script is **unverified in a real Editor**; a failed first run is evidence to investigate, not permission to claim a working APK.
+7. If the new APK is produced, install it on a real Android phone and verify the network, UI scaling, REVIVE, offline progression and save recovery. Capture screenshots for first visual approval.
 
-## Remaining store-release work
+## Cloud alternative: Unity Build Automation
 
-Neither path signs a store-ready Android AAB or builds an iPhone package. Production requires verified compatibility with current store Android SDK levels; unique package identifier; release signing; privacy/consent and store listing; optional ad and purchase integrations only after testing; and iOS Xcode/TestFlight setup on macOS.
+If the goal is builds without Unity installed on Windows, consider **Unity Build Automation (UBA)** through the [Unity Dashboard](https://cloud.unity.com/), using the existing Unity ID/Google sign-in. Unity documents direct GitHub source control access and Android build configurations. This is **not** the same as GameCI and does not require placing your Unity Personal entitlement into a GitHub Actions secret.
 
-## Security and change control
+High-level configuration:
+1. In Unity Dashboard, open **DevOps > Build Automation** and activate/configure the service as appropriate to the account and available free-plan usage.
+2. Connect GitHub and the `JeremyHennessy/Relight` repository. Unity's documentation specifies GitHub authorization (typically a fine-grained PAT with minimal repository permissions); create/store it **only in Unity's secure configuration**, not this repo or chat.
+3. Configure an Android development build from branch `build/opt-in-android-development-apk` with the Unity version from `ProjectSettings/ProjectVersion.txt`, **if available**. Unity currently lists 6000.1 as deprecated in Build Automation, so verify available editor images before assuming compatibility.
+4. The current repository initializes its boot scene via `Relight.Editor.RelightProjectSetup.Initialize`; ensure scene setup happens before the cloud build, for example using a properly configured Unity pre-export method. Confirm with logs.
+5. Run the first build, inspect logs and artifacts, then install on a phone.
 
-- Never share or commit license files, passwords, Unity serials, Android signing keystores or Apple credentials.
-- Keep all experimental changes in draft PR branches until actual editor/device evidence supports merging.
-- Do not call a skipped Unity workflow “passed.”
-- If the first real Unity build fails, retain its logs and fix one compile/packaging problem at a time.
+Unity references:
+- https://docs.unity.com/en-us/build-automation
+- https://docs.unity.com/en-us/build-automation/get-started-with-build-automation/connect-your-version-control-system
+- https://docs.unity.com/en-us/build-automation/basic-build-configuration/overview
+- https://docs.unity.com/en-us/build-automation/reference/supported-unity-versions
+- https://docs.unity.com/en-us/devops/pricing/free-plan
+
+**Cloud billing, available build minutes and supported Unity versions must be verified for the account before assuming a free/working build.** No UBA service has been connected in this conversation.
+
+## GameCI on GitHub — held for license compatibility review
+
+The two workflows, `unity-editor-verification.yml` and `unity-android-development.yml`, remain **opt-in** and must not be presented as a ready-to-use Unity Personal solution. They require an explicitly verified compatible GameCI license activation method, which has not been established. They are also gated on `RELIGHT_GAMECI_LICENSE_CONFIRMED=yes` in addition to their respective opt-in variables. Do not set that guard simply to silence a skipped build.
+
+## Release gates still outstanding
+
+Actual Unity compilation, all 17 Editor tests, an Android development APK, physical-device testing, iOS build, app-store signing and app-store review are all unverified. The current default branch is not changed by this documentation correction.
