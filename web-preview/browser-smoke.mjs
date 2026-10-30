@@ -54,6 +54,8 @@ try{
   assert.match(await p.locator('[data-index="7"]').getAttribute("class"),/suggested/);
   await p.locator('[data-index="7"]').click();
   await p.waitForFunction(()=>document.querySelector("#mission-title")?.textContent.includes("world wake up"));
+  assert.doesNotMatch(await p.locator("#selected-tool-text").textContent(),/glowing NEXT tile/,
+    "no nonexistent NEXT tile after the tutorial construction steps");
   const saved=await p.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")));
   assert.equal(saved.cells[19],5);assert.equal(saved.cells[7],3);
   assert.ok(saved.scrap>=3&&saved.scrap<10,"two purchases persisted; live mining may earn fractional scrap");
@@ -89,6 +91,8 @@ try{
   await p.reload({waitUntil:"networkidle"});
   await p.waitForFunction(()=>!document.querySelector("#revive").disabled,
     null,{timeout:10000});
+  assert.match(await p.locator("#selected-tool-text").textContent(),/tap AWAKEN REGION/,
+    "when region is ready the guide prioritizes the revival action");
   assert.equal(await p.locator("#restored-percent").textContent(),"100%");
   const planetAtReady=await p.locator("#planet").evaluate(e=>e.toDataURL());
   const planetNameAtReady=await p.locator("#planet-name").textContent();
