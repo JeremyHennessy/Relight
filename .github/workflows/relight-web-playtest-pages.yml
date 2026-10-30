@@ -69,6 +69,8 @@ jobs:
           path: |
             relight-mobile-playtest.png
             relight-mobile-onboarding.png
+            relight-mobile-awakening-ready.png
+            relight-mobile-awakened.png
             relight-desktop-playtest.png
           if-no-files-found: ignore
 
