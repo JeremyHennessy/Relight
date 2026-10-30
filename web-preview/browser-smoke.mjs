@@ -75,14 +75,20 @@ try{
   await p.waitForFunction(()=>!document.querySelector("#revive").disabled,
     null,{timeout:10000});
   assert.equal(await p.locator("#restored-percent").textContent(),"100%");
-  assert.notEqual(await p.locator("#planet").evaluate(e=>e.toDataURL()),
-    planetBefore,"recovered planet texture should visibly differ from barren planet");
+  const planetAtReady=await p.locator("#planet").evaluate(e=>e.toDataURL());
+  const planetNameAtReady=await p.locator("#planet-name").textContent();
+  assert.notEqual(planetAtReady,planetBefore,
+    "recovered planet texture should visibly differ from barren planet");
   await p.screenshot({path:"relight-mobile-awakening-ready.png",fullPage:true,animations:"disabled"});
   await p.locator("#revive").click();
   const awakened=await p.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")));
   assert.equal(awakened.region,1,"reviving a region advances exactly one milestone");
   assert.equal(awakened.restoration,0,"next region begins from zero restoration");
   assert.match(await p.locator("#sector").textContent(),/SECTOR 02/);
+  assert.equal(await p.locator("#planet-name").textContent(),planetNameAtReady,
+    "first region revival should preserve the current planet identity");
+  assert.equal(await p.locator("#planet").evaluate(e=>e.toDataURL()),planetAtReady,
+    "first revival should preserve accumulated planet restoration, not reset to barren");
   await p.screenshot({path:"relight-mobile-awakened.png",fullPage:true,animations:"disabled"});
   await p.reload({waitUntil:"networkidle"});
   assert.match(await p.locator("#sector").textContent(),/SECTOR 02/,
