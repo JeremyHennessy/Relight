@@ -51,6 +51,34 @@ try{
   assert.match(await p.locator("#mission-title").textContent(),/world wake up/i,"save survives reload");
   assert.equal(await p.locator("#welcome").evaluate(e=>e.open),false,"guide dismissed persists");
   assert.equal(await p.locator('[data-index="19"]').locator(".tile-name").textContent(),"POWER");
+
+  // Confirm the UI actually renders an evolving planet and a claimable
+  // milestone. Seed only the persisted restore meter to avoid a 2-minute
+  // wall-clock test; run the final completion and revival through the UI.
+  const planetBefore=await p.locator("#planet").evaluate(e=>e.toDataURL());
+  await p.evaluate(()=>{
+    const key="relight.webplaytest.v1";
+    const snapshot=JSON.parse(localStorage.getItem(key));
+    snapshot.restoration=99.8;
+    snapshot.savedAt=Math.floor(Date.now()/1000);
+    localStorage.setItem(key,JSON.stringify(snapshot));
+  });
+  await p.reload({waitUntil:"networkidle"});
+  await p.waitForFunction(()=>!document.querySelector("#revive").disabled,
+    null,{timeout:10000});
+  assert.equal(await p.locator("#restored-percent").textContent(),"100%");
+  assert.notEqual(await p.locator("#planet").evaluate(e=>e.toDataURL()),
+    planetBefore,"recovered planet texture should visibly differ from barren planet");
+  await p.screenshot({path:"relight-mobile-awakening-ready.png",fullPage:true,animations:"disabled"});
+  await p.locator("#revive").click();
+  const awakened=await p.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")));
+  assert.equal(awakened.region,1,"reviving a region advances exactly one milestone");
+  assert.equal(awakened.restoration,0,"next region begins from zero restoration");
+  assert.match(await p.locator("#sector").textContent(),/SECTOR 02/);
+  await p.screenshot({path:"relight-mobile-awakened.png",fullPage:true,animations:"disabled"});
+  await p.reload({waitUntil:"networkidle"});
+  assert.match(await p.locator("#sector").textContent(),/SECTOR 02/,
+    "region advancement is preserved across reload");
   await mobile.close();
 
   const desktop=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
