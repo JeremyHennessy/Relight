@@ -126,6 +126,17 @@ namespace Relight.Tests
         }
 
         [Test]
+        public void NetworkGeometryFitsCompactPortraitPanel()
+        {
+            var geometry = NetworkLayout.Calculate(400, 300);
+            Assert.IsTrue(geometry.Valid);
+            Assert.AreEqual(geometry.Size, geometry.TotalContentWidth, 0.0001);
+            Assert.LessOrEqual(geometry.Size, 284);
+            Assert.GreaterOrEqual(geometry.CellSize, 44);
+            Assert.IsFalse(NetworkLayout.Calculate(double.NaN, 300).Valid);
+        }
+
+        [Test]
         public void FirstSessionGuidesPlayerWithoutForcedActions()
         {
             var game = new WorldModel(WorldState.NewWorld());
