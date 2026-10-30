@@ -28,6 +28,21 @@ jobs:
         run: dotnet run --configuration Release --project verification/Relight.CoreChecks/Relight.CoreChecks.csproj
       - name: Parse all Unity C# sources with Roslyn
         run: dotnet run --configuration Release --project verification/Relight.SyntaxChecks/Relight.SyntaxChecks.csproj
+      - name: Parse Windows Unity verifier script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD "scripts/verify-unity-windows.ps1"),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          Write-Host "PowerShell syntax OK; Unity script not executed."
       - name: Verify Unity manifest and assemblies are parseable JSON
         run: |
           python3 - <<'PY'
