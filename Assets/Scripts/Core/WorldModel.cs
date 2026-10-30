@@ -56,6 +56,10 @@ namespace Relight
             if (double.IsNaN(state.Scrap) || double.IsInfinity(state.Scrap) || state.Scrap < 0) return false;
             if (double.IsNaN(state.Restoration) || double.IsInfinity(state.Restoration) || state.Restoration < 0) return false;
             if (state.Region < 0 || state.ExtractorLevel < 0 || state.PowerLevel < 0) return false;
+            if (state.SavedAtUnix < 0 ||
+                double.IsNaN(state.TotalPlayedSeconds) ||
+                double.IsInfinity(state.TotalPlayedSeconds) ||
+                state.TotalPlayedSeconds < 0) return false;
             foreach (int cell in state.Cells)
                 if (cell < 0 || cell > (int)Machine.Generator) return false;
             return true;
@@ -92,6 +96,7 @@ namespace Relight
         public bool Place(int index, Machine machine)
         {
             if (index < 0 || index >= State.Cells.Length || index == 12) return false;
+            if (machine < Machine.Empty || machine > Machine.Generator) return false;
             if (machine == Machine.Core) return false;
             if (machine == Machine.Empty)
             {
