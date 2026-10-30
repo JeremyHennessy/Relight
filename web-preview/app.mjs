@@ -47,13 +47,20 @@ for(let i=0;i<25;i++){
 }
 function choose(machine,manual=true){
   selected=machine;
-  document.querySelectorAll(".tool").forEach(el=>{
+  document.querySelectorAll(".tool, .quick-tool").forEach(el=>{
     el.setAttribute("aria-pressed",String(Number(el.dataset.machine)===selected));
   });
-  $("selected-tool-text").textContent=selected===Machine.Empty?"REMOVE selected · tap a structure":words[selected]+" selected · tap a square";
+  const hint=suggested(state),goal=mission(state);
+  const guided=(goal===0&&selected===Machine.Generator)||
+    (goal===1&&selected===Machine.Extractor);
+  $("selected-tool-text").textContent=selected===Machine.Empty?
+    "REMOVE selected · tap a structure":
+    guided&&hint>=0?
+      words[selected]+" selected · tap the glowing NEXT tile":
+      words[selected]+" selected · tap an empty square";
   if(manual)notice(selected===Machine.Empty?"Tap a structure to remove it.":words[selected]+" selected. Now tap an empty square.");
 }
-document.querySelectorAll(".tool").forEach(el=>el.addEventListener("click",()=>choose(Number(el.dataset.machine))));
+document.querySelectorAll(".tool, .quick-tool").forEach(el=>el.addEventListener("click",()=>choose(Number(el.dataset.machine))));
 function tap(index){
   const result=place(state,index,selected);
   notice(result.message,!result.ok);
@@ -145,7 +152,7 @@ function render(force=false){
     }
     $("network-lines").innerHTML=lines.join("");
   }
-  document.querySelectorAll(".tool").forEach(el=>{
+  document.querySelectorAll(".tool, .quick-tool").forEach(el=>{
     const type=Number(el.dataset.machine);
     el.classList.toggle("unaffordable",type!==0&&state.scrap<PRICE[type]);
   });
