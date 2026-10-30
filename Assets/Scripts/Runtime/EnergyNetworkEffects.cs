@@ -20,6 +20,7 @@ namespace Relight
             public Image Pulse;
             public Vector2 Start;
             public Vector2 End;
+            public bool Active;
         }
 
         private const int GridWidth = WorldModel.Width;
@@ -133,18 +134,34 @@ namespace Relight
         /// Only powered neighbors display a route. Moving square pulses convey
         /// direction and activity while keeping the prototype readable.
         /// </summary>
-        public void UpdateNetwork(bool[] connected, float time)
+        public void UpdateNetwork(bool[] connected)
         {
             if (root == null || connected == null || connected.Length != GridWidth * GridHeight)
                 return;
 
-            for (int i = 0; i < links.Count; i++)
+            foreach (Link link in links)
             {
-                var link = links[i];
                 bool active = connected[link.From] && connected[link.To];
+                if (link.Active == active) continue;
+                link.Active = active;
                 link.Track.enabled = active;
                 link.Pulse.enabled = active;
-                if (!active) continue;
+            }
+        }
+
+        /// <summary>
+        /// Animate the powered routes each rendered frame. Simulation data and
+        /// tool labels refresh less often, but the light must never stutter at
+        /// that slower rate. Only the 40 preallocated links are visited.
+        /// </summary>
+        public void Animate(float time)
+        {
+            if (root == null) return;
+
+            for (int i = 0; i < links.Count; i++)
+            {
+                Link link = links[i];
+                if (!link.Active) continue;
 
                 int fx = link.From % GridWidth, fy = link.From / GridWidth;
                 int tx = link.To % GridWidth, ty = link.To / GridWidth;
