@@ -292,12 +292,12 @@ namespace Relight
             if (networkContainerRect == null || networkGridRect == null ||
                 networkLayout == null || networkEffects == null) return;
 
-            float availableWidth = networkContainerRect.rect.width - 24f;
-            float availableHeight = networkContainerRect.rect.height - 24f;
-            if (availableWidth < 160f || availableHeight < 160f) return;
-            float size = Mathf.Clamp(Mathf.Min(availableWidth, availableHeight), 160f, 800f);
-            const float gap = 7f;
-            float cell = (size - gap * 4f) / WorldModel.Width;
+            var geometry = NetworkLayout.Calculate(
+                networkContainerRect.rect.width, networkContainerRect.rect.height);
+            if (!geometry.Valid) return;
+            float size = (float)geometry.Size;
+            float gap = (float)geometry.Spacing;
+            float cell = (float)geometry.CellSize;
 
             if (Mathf.Abs(networkGridRect.sizeDelta.x - size) > .5f)
             {
