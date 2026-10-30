@@ -14,6 +14,10 @@ namespace Relight
         private Machine selected = Machine.Generator;
         private Text header, subtitle, objective, status, hint;
         private RawImage planetView;
+        private RectTransform networkContainerRect;
+        private RectTransform networkGridRect;
+        private GridLayoutGroup networkLayout;
+        private EnergyNetworkEffects networkEffects;
         private Image headerBackground;
         private float regionCelebrationSeconds;
         private Texture2D planetTexture;
@@ -186,6 +190,7 @@ namespace Relight
             aspect.aspectRatio = 1f;
 
             var worldPanel = Block(safe.transform, "World", new Vector2(.04f,.285f), new Vector2(.96f,.735f), Panel);
+            networkContainerRect = (RectTransform)worldPanel.transform;
             var gridObject = new GameObject("Energy Network", typeof(RectTransform), typeof(GridLayoutGroup));
             gridObject.transform.SetParent(worldPanel.transform, false);
             var gridRect = (RectTransform)gridObject.transform;
@@ -198,6 +203,8 @@ namespace Relight
             grid.childAlignment = TextAnchor.MiddleCenter;
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             grid.constraintCount = 5;
+            networkGridRect = gridRect;
+            networkLayout = grid;
             for (int i = 0; i < tiles.Length; i++)
             {
                 int index = i;
@@ -205,6 +212,11 @@ namespace Relight
                 tileLabels[i] = tiles[i].GetComponentInChildren<Text>();
                 tileBackgrounds[i] = tiles[i].GetComponent<Image>();
             }
+
+            var effectObject = new GameObject("Animated Energy Routes", typeof(RectTransform));
+            effectObject.transform.SetParent(worldPanel.transform, false);
+            networkEffects = effectObject.AddComponent<EnergyNetworkEffects>();
+            networkEffects.Initialize();
 
             var controls = Block(safe.transform, "Build Tools", new Vector2(.04f,.147f), new Vector2(.96f,.27f), Panel);
             var names = new [] { "RELAY", "MINE", "RESTORE", "POWER", "REMOVE" };
@@ -275,9 +287,31 @@ namespace Relight
             Refresh();
         }
 
+        private void ReflowNetworkGrid()
+        {
+            if (networkContainerRect == null || networkGridRect == null ||
+                networkLayout == null || networkEffects == null) return;
+
+            var geometry = NetworkLayout.Calculate(
+                networkContainerRect.rect.width, networkContainerRect.rect.height);
+            if (!geometry.Valid) return;
+            float size = (float)geometry.Size;
+            float gap = (float)geometry.Spacing;
+            float cell = (float)geometry.CellSize;
+
+            if (Mathf.Abs(networkGridRect.sizeDelta.x - size) > .5f)
+            {
+                networkGridRect.sizeDelta = new Vector2(size, size);
+                networkLayout.cellSize = new Vector2(cell, cell);
+                networkLayout.spacing = new Vector2(gap, gap);
+            }
+            networkEffects.SetGeometry(size, cell, gap);
+        }
+
         private void Refresh()
         {
             if (header == null) return;
+            ReflowNetworkGrid();
             var state = world.State;
             header.text = "RELIGHT   /   REGION " + (state.Region + 1);
             var rates = world.CalculateRates();
@@ -303,6 +337,8 @@ namespace Relight
             }
             RefreshPlanet();
             var connected = world.Connected();
+            if (networkEffects != null)
+                networkEffects.UpdateNetwork(connected, Time.unscaledTime);
             int suggested = world.SuggestedFirstSessionTile();
             var icons = new [] { "+", "CORE", "LINK", "MINE", "LIFE", "GEN" };
             for (int i = 0; i < tiles.Length; i++)

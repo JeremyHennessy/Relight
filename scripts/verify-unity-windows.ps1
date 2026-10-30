@@ -57,7 +57,7 @@ if ($null -eq $testRun) {
 }
 $total = [int]$testRun.total
 $failed = [int]$testRun.failed
-if ($testRun.result -ne "Passed" -or $total -lt 13 -or $failed -ne 0) {
+if ($testRun.result -ne "Passed" -or $total -lt 16 -or $failed -ne 0) {
     throw "Unity EditMode tests incomplete/failed: result=$($testRun.result), total=$total, failed=$failed. Review $testsXml and $testsLog."
 }
 

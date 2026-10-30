@@ -20,6 +20,8 @@ Build generators and relay connections -> power extractors -> earn scrap -> powe
 - Adjacency bonuses for mines next to relays and restorers next to generators.
 - Emergency network repair preserving long-term progress.
 - Enlarged procedural planet art, visibly recovering over three-region cycles, with four visual biome palettes, clouds and settlement lights.
+- Animated energy tracks and travelling pulses between connected structures; decorative graphics do not intercept touch input.
+- Grid and energy-overlay dimensions are derived from the same pure, testable responsive layout calculation.
 - Non-blocking first-session missions with suggested placements, plus a region-restored celebration.
 - Save fallback to a previous valid snapshot when the primary save fails validation.
 - Mining and power upgrades, increasing region restoration targets.
@@ -41,6 +43,13 @@ Build generators and relay connections -> power extractors -> earn scrap -> powe
 - Purchase options only after gameplay and retention testing.
 - Analytics events: first_power, first_build, first_restore, session_end, rewarded_ad_offer, rewarded_ad_complete, purchase_complete.
 - Ad mediation, consent, privacy disclosures, attribution and store billing require separate implementation and compliance review.
+
+## Visual-acceptance gates (not yet met)
+- Run the actual Unity Editor and install on a portrait Android device.
+- Inspect a small-screen phone for grid overflow, touch targets, clipping and text legibility.
+- Verify energized routes follow active connected machines and do not obscure buttons.
+- Compare procedural planet recovery across at least three restoration milestones.
+- Capture screenshots and obtain an approved visual baseline before substantial UI changes.
 
 ## Progression test gates
 - New player can understand the first connection within 30 seconds.
