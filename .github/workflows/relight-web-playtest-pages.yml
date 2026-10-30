@@ -76,6 +76,11 @@ jobs:
           if-no-files-found: ignore
 
   deploy:
+    # GitHub Pages is intentionally not yet enabled for this repo. Avoid
+    # failing a tested browser build before this optional destination is ready.
+    # Enable Settings > Pages > Source = GitHub Actions, then set the Actions
+    # repository variable RELIGHT_PUBLISH_GITHUB_PAGES=true to opt in.
+    if: ${{ vars.RELIGHT_PUBLISH_GITHUB_PAGES == 'true' }}
     name: Publish Web Playtest to GitHub Pages
     runs-on: ubuntu-latest
     needs: [verify, browser]
