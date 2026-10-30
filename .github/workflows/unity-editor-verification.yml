@@ -21,7 +21,7 @@ permissions:
 jobs:
   unity-editmode:
     if: ${{ vars.RELIGHT_UNITY_CI == 'enabled' && vars.RELIGHT_GAMECI_LICENSE_CONFIRMED == 'yes' }}
-    name: Unity 6000.1.9f1 EditMode tests
+    name: Unity 6000.3.27f1 EditMode tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -58,7 +58,7 @@ jobs:
           UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
         with:
           projectPath: .
-          unityVersion: 6000.1.9f1
+          unityVersion: 6000.3.27f1
           testMode: editmode
           coverageEnabled: false
           githubToken: ${{ secrets.GITHUB_TOKEN }}
