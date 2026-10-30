@@ -23,6 +23,8 @@ namespace Relight
         private Texture2D planetTexture;
         private int lastPlanetKey = -1;
         private bool repairPending;
+        private Button footerAction;
+        private Text footerActionLabel;
         private readonly Button[] tiles = new Button[25];
         private readonly Text[] tileLabels = new Text[25];
         private readonly Image[] tileBackgrounds = new Image[25];
@@ -54,25 +56,25 @@ namespace Relight
                     Debug.LogWarning("Relight restored a valid backup after the primary save was unavailable.");
             }
             world = new WorldModel(saved);
-            int beforeOffline = world.State.Region;
+            bool readyBeforeOffline = world.IsRegionReady;
             double away = world.ApplyOffline(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             BuildUI();
-            if (world.State.Region > beforeOffline)
-                status.text = "Welcome back! " + (world.State.Region - beforeOffline) + " region(s) revived offline.";
+            if (!readyBeforeOffline && world.IsRegionReady)
+                status.text = "Region ready! Tap REVIVE to discover what returns.";
             else
-                status.text = away > 1 ? "Welcome back. Offline production: " + Format(away) + " seconds." : "Restore the first region.";
+                status.text = away > 1 ? "Welcome back. Offline work: " + Format(away) + " seconds." : "Restore the first region.";
             Refresh();
         }
 
         private void Update()
         {
             double dt = Math.Min(Time.unscaledDeltaTime, 0.25f);
-            int previousRegion = world.State.Region;
+            bool wasReady = world.IsRegionReady;
             world.Tick(dt);
             if (networkEffects != null)
                 networkEffects.Animate(Time.unscaledTime);
-            if (world.State.Region > previousRegion)
-                CelebrateRestoration(world.State.Region - previousRegion);
+            if (!wasReady && world.IsRegionReady && status != null)
+                status.text = "REGION READY! Tap REVIVE to bring it to life.";
             if (regionCelebrationSeconds > 0f && headerBackground != null)
             {
                 regionCelebrationSeconds = Mathf.Max(0f, regionCelebrationSeconds - Time.unscaledDeltaTime);
@@ -91,12 +93,12 @@ namespace Relight
             if (paused) Save();
             else if (world != null)
             {
-                int previousRegion = world.State.Region;
+                bool readyBeforeOffline = world.IsRegionReady;
                 double away = world.ApplyOffline(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-                if (world.State.Region > previousRegion)
-                    CelebrateRestoration(world.State.Region - previousRegion);
+                if (!readyBeforeOffline && world.IsRegionReady && status != null)
+                    status.text = "Region ready! Tap REVIVE.";
                 else if (away > 1 && status != null)
-                    status.text = "Offline production: " + Format(away) + " seconds.";
+                    status.text = "Offline work: " + Format(away) + " seconds.";
                 Refresh();
             }
         }
@@ -247,8 +249,9 @@ namespace Relight
             var bottom = Block(safe.transform, "Status", new Vector2(.04f,.008f), new Vector2(.96f,.055f), Panel);
             status = Label(bottom.transform, "", 24, TextAnchor.MiddleCenter, Color.white);
             SetAnchors(status.rectTransform, new Vector2(.02f,0), new Vector2(.76f,1));
-            var repair = ButtonWithLabel(bottom.transform, "Emergency Repair", "REPAIR", 23, Repair);
-            SetAnchors((RectTransform)repair.transform, new Vector2(.77f,.10f), new Vector2(.99f,.90f));
+            footerAction = ButtonWithLabel(bottom.transform, "Region / Repair", "REPAIR", 23, FooterAction);
+            footerActionLabel = footerAction.GetComponentInChildren<Text>();
+            SetAnchors((RectTransform)footerAction.transform, new Vector2(.77f,.10f), new Vector2(.99f,.90f));
         }
 
         private void CelebrateRestoration(int count)
@@ -272,6 +275,22 @@ namespace Relight
             if (world.Upgrade(mining)) Save();
             status.text = world.LastMessage;
             Refresh();
+        }
+
+        private void FooterAction()
+        {
+            if (world.IsRegionReady)
+            {
+                repairPending = false;
+                if (world.ClaimRegion())
+                {
+                    CelebrateRestoration(1);
+                    Save();
+                }
+                Refresh();
+                return;
+            }
+            Repair();
         }
 
         private void Repair()
@@ -322,7 +341,9 @@ namespace Relight
                 "%\n+" + rates.ScrapPerSecond.ToString("0.0") + "/s   |   POWER " +
                 rates.ConnectedConsumers + "/" + rates.PowerCapacity;
             var goal = world.GetFirstSessionGoal();
-            switch (goal)
+            if (world.IsRegionReady)
+                objective.text = "REGION READY TO AWAKEN\nTap REVIVE below to unlock the next region";
+            else switch (goal)
             {
                 case FirstSessionGoal.ImproveRestoration:
                     objective.text = "01  POWER THE LIFE ENGINE\nBuild POWER beside LIFE";
@@ -337,6 +358,11 @@ namespace Relight
                     objective.text = "REGION REVIVED\nExplore, optimize, restore";
                     break;
             }
+            if (footerActionLabel != null)
+                footerActionLabel.text = world.IsRegionReady ? "REVIVE" : "REPAIR";
+            if (footerAction != null)
+                footerAction.GetComponent<Image>().color = world.IsRegionReady ?
+                    Accent : new Color(.18f,.27f,.36f);
             RefreshPlanet();
             var connected = world.Connected();
             if (networkEffects != null)
