@@ -144,23 +144,84 @@ namespace Relight
             return count;
         }
 
+        public struct ProductionRates
+        {
+            public double ScrapPerSecond;
+            public double ScrapUsedPerSecond;
+            public double RestorationPerSecond;
+            public int ConnectedConsumers;
+            public int PowerCapacity;
+            public double PowerFraction;
+        }
+
+        /// <summary>
+        /// All connected consumers share limited power fairly. Machine positioning
+        /// matters: relays boost adjacent mines and generators boost restorers.
+        /// </summary>
+        public ProductionRates CalculateRates()
+        {
+            var connected = Connected();
+            var rates = new ProductionRates { PowerCapacity = PowerCapacity() };
+            for (int i = 0; i < connected.Length; i++)
+            {
+                if (!connected[i]) continue;
+                if (State.Cells[i] == (int)Machine.Extractor || State.Cells[i] == (int)Machine.Restorer)
+                    rates.ConnectedConsumers++;
+            }
+            rates.PowerFraction = rates.ConnectedConsumers == 0 ? 1 :
+                Math.Min(1.0, (double)rates.PowerCapacity / rates.ConnectedConsumers);
+
+            for (int i = 0; i < connected.Length; i++)
+            {
+                if (!connected[i]) continue;
+                var machine = (Machine)State.Cells[i];
+                if (machine == Machine.Extractor)
+                {
+                    int nearbyRelays = Math.Min(2, Adjacent(i, Machine.Relay, connected));
+                    rates.ScrapPerSecond += (1 + State.ExtractorLevel * .5) *
+                        (1 + nearbyRelays * .25) * rates.PowerFraction;
+                }
+                else if (machine == Machine.Restorer)
+                {
+                    int nearbyGenerators = Math.Min(2, Adjacent(i, Machine.Generator, connected));
+                    rates.ScrapUsedPerSecond += .7 * rates.PowerFraction;
+                    rates.RestorationPerSecond += .7 * (1 + nearbyGenerators * .2) * rates.PowerFraction;
+                }
+            }
+            return rates;
+        }
+
+        private int Adjacent(int index, Machine machine, bool[] connected)
+        {
+            int x = index % Width, y = index / Width, count = 0;
+            if (x > 0 && connected[index - 1] && State.Cells[index - 1] == (int)machine) count++;
+            if (x < Width - 1 && connected[index + 1] && State.Cells[index + 1] == (int)machine) count++;
+            if (y > 0 && connected[index - Width] && State.Cells[index - Width] == (int)machine) count++;
+            if (y < Height - 1 && connected[index + Width] && State.Cells[index + Width] == (int)machine) count++;
+            return count;
+        }
+
+        public void ResetGrid()
+        {
+            // Emergency recovery: players can never permanently softlock themselves.
+            // Preserve all long-term progress; purchased structures are not refunded.
+            State.Cells = WorldState.NewWorld().Cells;
+            LastMessage = "Network repaired. Progress preserved.";
+        }
+
         public void Tick(double seconds)
         {
             if (seconds <= 0 || double.IsNaN(seconds) || double.IsInfinity(seconds)) return;
             seconds = Math.Min(seconds, OfflineCapSeconds);
-            var connected = Connected();
-            int capacity = PowerCapacity(), extractors = 0, restorers = 0;
-            for (int i = 0; i < connected.Length && capacity > 0; i++)
-            {
-                if (!connected[i]) continue;
-                if (State.Cells[i] == (int)Machine.Extractor) { extractors++; capacity--; }
-                if (State.Cells[i] == (int)Machine.Restorer) { restorers++; capacity--; }
-            }
-            State.Scrap += seconds * extractors * (1.0 + State.ExtractorLevel * 0.5);
-            // Restoration consumes scrap, so building a balanced network matters.
-            double used = Math.Min(State.Scrap, seconds * restorers * 0.7);
-            State.Scrap -= used;
-            State.Restoration += used;
+            var rates = CalculateRates();
+            State.Scrap += seconds * rates.ScrapPerSecond;
+            // A restorer can only convert scrap that exists; production and
+            // consumption are accounted for once per tick.
+            double requiredScrap = seconds * rates.ScrapUsedPerSecond;
+            double usedScrap = Math.Min(State.Scrap, requiredScrap);
+            State.Scrap -= usedScrap;
+            if (requiredScrap > 0)
+                State.Restoration += seconds * rates.RestorationPerSecond * (usedScrap / requiredScrap);
             State.TotalPlayedSeconds += seconds;
             while (State.Restoration >= TargetForRegion(State.Region))
             {
