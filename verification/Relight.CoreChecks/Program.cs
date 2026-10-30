@@ -119,6 +119,17 @@ internal static class Program
             "mission advances after mining expands");
         tutorial.Tick(150);
         Check(tutorial.IsRegionReady, "first region becomes ready after restoration");
+        var startBudget = WorldState.NewWorld().Scrap;
+        Check(WorldModel.Cost(Machine.Generator) + WorldModel.Cost(Machine.Extractor) <= startBudget,
+            "opening grant can fund both guided construction steps");
+        var fastStart = new WorldModel(WorldState.NewWorld());
+        Check(fastStart.Place(19, Machine.Generator) &&
+              fastStart.Place(7, Machine.Extractor),
+            "guided opening can be funded without waiting or advertising");
+        fastStart.Tick(120);
+        Check(fastStart.IsRegionReady,
+            "guided build can restore its first region within two minutes of simulation");
+
         Check(tutorial.ClaimRegion(), "first region claim succeeds");
         Check(tutorial.GetFirstSessionGoal() == FirstSessionGoal.ContinueExploring,
             "mission completes once the player revives the region");
