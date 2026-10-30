@@ -163,6 +163,9 @@ internal static class Program
             "completed region does not consume further restoration resources");
         Check(unattended.ClaimRegion() && !unattended.ClaimRegion(),
             "offline milestone is claimed only once before new work");
+        Console.WriteLine("OFFLINE ECONOMY BASELINE: " +
+            unattended.State.Scrap.ToString("0.##") + " scrap after eight hours and 100 seconds of active ticks.");
+
         Console.WriteLine("PACING RESULT: one free, claimable region after eight hours offline.");
 
         var random = new Random(2841);
