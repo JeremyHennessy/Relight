@@ -89,12 +89,34 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check if GitHub Pages uses Actions publishing
+        id: pages-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          code=$(curl --silent --show-error --location --max-time 15 \
+            --output /tmp/relight-pages.json --write-out '%{http_code}' \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages" || true)
+          if [ "$code" = "200" ] && python3 -c \
+            'import json,sys; sys.exit(0 if json.load(open("/tmp/relight-pages.json")).get("build_type")=="workflow" else 1)'; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+            echo 'GitHub Pages uses workflow publishing; deployment is enabled.'
+          else
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub Pages is not configured for GitHub Actions (site HTTP ${code}). Set Settings > Pages > Build and deployment > Source = GitHub Actions to enable this optional second publisher. Cloudflare staging is separate and already live."
+          fi
       - name: Configure Pages
+        if: steps.pages-check.outputs.ready == 'true'
         uses: actions/configure-pages@v5
       - name: Upload browser application (no Unity build or secrets)
+        if: steps.pages-check.outputs.ready == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: web-preview
       - name: Deploy to Pages
+        if: steps.pages-check.outputs.ready == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
