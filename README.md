@@ -18,7 +18,7 @@ One spark brings a dead world back to life. Build an energy network, connect min
 - `Assets/Scripts/Core/`: deterministic game economy and state — no Unity dependency.
 - `Assets/Scripts/Runtime/`: portrait UI, interactions, procedural visual generation.
 - `Assets/Editor/`: Unity scene setup and Android development build menu.
-- `Assets/Tests/EditMode/`: Unity-specific EditMode tests (**13 defined**, not yet run in Unity).
+- `Assets/Tests/EditMode/`: Unity-specific EditMode tests (**14 defined**, not yet run in Unity).
 - `verification/`: standalone .NET core and C# syntax validation jobs.
 - `docs/PRODUCT_STRATEGY.md`: long-term gameplay/visual/business direction.
 - `docs/GAME_DESIGN.md`: concrete mechanics and progression plan.
