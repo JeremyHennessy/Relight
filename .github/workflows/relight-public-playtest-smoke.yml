@@ -31,7 +31,10 @@ jobs:
           done
           grep -q '<title>Relight' /tmp/relight-live-_
           grep -q 'from "./model.mjs"' /tmp/relight-live-_app_mjs
-          echo "PASS: production URL and static game assets served over HTTPS"
+          # Verify the new hosted release, not a stale cached prior revision.
+          grep -Fq 'MINE is already selected for you' /tmp/relight-live-_app_mjs
+          grep -Fq 'On phones, transient action feedback sits at the top edge' /tmp/relight-live-_styles_css
+          echo "PASS: public HTTPS assets include corrected tutorial and mobile notification positioning"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
