@@ -69,6 +69,7 @@ jobs:
           path: |
             relight-mobile-playtest.png
             relight-mobile-onboarding.png
+            relight-narrow-320-playtest.png
             relight-mobile-awakening-ready.png
             relight-mobile-awakened.png
             relight-desktop-playtest.png
