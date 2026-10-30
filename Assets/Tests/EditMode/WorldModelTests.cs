@@ -177,6 +177,26 @@ namespace Relight.Tests
         }
 
         [Test]
+        public void OfflineScrapStorageIsCappedButRestorationContinues()
+        {
+            var eightHours = WorldState.NewWorld();
+            eightHours.SavedAtUnix = 100;
+            var offline = new WorldModel(eightHours);
+            double miningRate = offline.CalculateRates().ScrapPerSecond;
+            offline.ApplyOffline(100 + WorldModel.OfflineCapSeconds);
+
+            Assert.AreEqual(30 + miningRate * WorldModel.OfflineScrapProductionCapSeconds -
+                WorldModel.TargetForRegion(0), offline.State.Scrap, 0.001);
+            Assert.IsTrue(offline.IsRegionReady);
+            Assert.AreEqual(0, offline.State.Region);
+            Assert.AreEqual(WorldModel.OfflineCapSeconds, offline.State.TotalPlayedSeconds, 0.001);
+
+            var active = new WorldModel(WorldState.NewWorld());
+            active.Tick(WorldModel.OfflineCapSeconds);
+            Assert.Greater(active.State.Scrap, offline.State.Scrap);
+        }
+
+        [Test]
         public void PowerUpgradeIncreasesCapacity()
         {
             var game = new WorldModel(WorldState.NewWorld());
