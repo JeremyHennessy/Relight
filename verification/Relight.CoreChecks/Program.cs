@@ -94,6 +94,21 @@ internal static class Program
         Check(recovery.State.Region == 4 && recovery.State.ExtractorLevel == 3 &&
             recovery.State.Restoration == 25, "repair preserves permanent progress");
 
+        var tutorial = new WorldModel(WorldState.NewWorld());
+        Check(tutorial.GetFirstSessionGoal() == FirstSessionGoal.ImproveRestoration,
+            "first goal is to boost the recovery system");
+        Check(tutorial.SuggestedFirstSessionTile() == 19,
+            "first guidance highlights a valid position next to LIFE");
+        Check(tutorial.Place(19, Machine.Generator), "guided generator purchase succeeds");
+        Check(tutorial.GetFirstSessionGoal() == FirstSessionGoal.ExpandProduction,
+            "mission advances after restoration is boosted");
+        Check(tutorial.Place(7, Machine.Extractor), "guided extractor purchase succeeds");
+        Check(tutorial.GetFirstSessionGoal() == FirstSessionGoal.RestoreFirstRegion,
+            "mission advances after mining expands");
+        tutorial.Tick(150);
+        Check(tutorial.GetFirstSessionGoal() == FirstSessionGoal.ContinueExploring,
+            "mission completes once a region is restored");
+
         var random = new Random(2841);
         var sandbox = new WorldModel(WorldState.NewWorld());
         for (int step = 0; step < 1000; step++)
