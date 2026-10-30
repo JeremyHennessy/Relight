@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'feat/**'
+      - 'fix/**'
   pull_request:
     branches:
       - main
@@ -42,7 +43,17 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             exit 1
           }
-          Write-Host "PowerShell syntax OK; Unity script not executed."
+          # Check the exact Unity test-invocation contract, not just script syntax.
+          $source = Get-Content -LiteralPath "scripts/verify-unity-windows.ps1" -Raw
+          $testInvoke = [regex]::Match($source, '(?s)Invoke-Unity "Execute Unity EditMode tests" @\\((.*?)\\)')
+          if (-not $testInvoke.Success) { throw "Unity test invocation not found." }
+          if ($testInvoke.Groups[1].Value -match '"-quit"') {
+            throw "-quit is unsupported together with Unity -runTests."
+          }
+          if ($testInvoke.Groups[1].Value -notmatch '"-runTests"') {
+            throw "Unity EditMode invocation must pass -runTests."
+          }
+          Write-Host "PowerShell syntax and Unity test invocation contract OK; Unity not executed."
       - name: Verify Unity manifest and assemblies are parseable JSON
         run: |
           python3 - <<'PY'
