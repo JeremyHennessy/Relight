@@ -30,6 +30,14 @@ internal static class Program
         var failures = new WorldModel(WorldState.NewWorld());
         Check(!failures.Place(12, Machine.Extractor), "cannot overwrite core");
         Check(!failures.Place(0, Machine.Core), "cannot create another core");
+        Check(!failures.Place(0, (Machine)999),
+            "unknown machine types cannot enter saved game state");
+        var damagedClock = WorldState.NewWorld();
+        damagedClock.TotalPlayedSeconds = double.NaN;
+        Check(!WorldModel.Validate(damagedClock), "NaN play duration rejected");
+        var futureClock = WorldState.NewWorld();
+        futureClock.SavedAtUnix = -1;
+        Check(!WorldModel.Validate(futureClock), "negative timestamps rejected");
         failures.State.Scrap = 0;
         Check(!failures.Place(0, Machine.Generator), "cannot buy without scrap");
 
