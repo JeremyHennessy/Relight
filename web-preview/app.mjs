@@ -28,12 +28,24 @@ function persist(){
   catch(e){console.warn("Progress could not be saved in this browser",e);notice("Browser storage unavailable. This session won't persist.",true);}
 }
 const readable=n=>n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"K":Number(n).toFixed(0);
+function mobileFeedback(message,warning=false){
+  const inline=$("mobile-feedback");
+  if(!inline)return;
+  if(inline.textContent!==message)inline.textContent=message;
+  inline.classList.toggle("warning",warning);
+}
 function notice(message,warning=false){
   const el=$("toast");el.textContent=message;
   el.style.borderColor=warning?"#e09b88":"#599a8e";
   el.classList.add("visible");
+  // On small screens the fixed toast is hidden, and a reserved feedback line
+  // beside the toolbelt provides the same message without covering content.
+  mobileFeedback(message,warning);
   clearTimeout(toastTimeout);
-  toastTimeout=setTimeout(()=>el.classList.remove("visible"),3500);
+  toastTimeout=setTimeout(()=>{
+    el.classList.remove("visible");
+    mobileFeedback($("selected-tool-text")?.textContent||"Choose a tool and tap an empty square.");
+  },3500);
 }
 const tiles=[];
 for(let i=0;i<25;i++){
@@ -186,6 +198,8 @@ function render(force=false){
     planetRecovery>=.2?"ATMOSPHERE: RECOVERING":"ATMOSPHERE: DORMANT";
   $("planet-tag").lastChild.textContent=ready?" READY TO AWAKEN":" RESTORATION ACTIVE";
   $("planet-name").textContent=["AURORA-9","SOLACE","VERDANT","HOLLOW SKY","ECHO PRIME","NEW DAWN"][planetIndex%6];
+  if(!$("toast").classList.contains("visible"))
+    mobileFeedback($("selected-tool-text").textContent);
 }
 function lerp(a,b,t){return a+(b-a)*t;}
 function rgba(c,a=1){return "rgba("+c.map(v=>Math.round(v)).join(",")+","+a+")";}
