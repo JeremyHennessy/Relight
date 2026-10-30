@@ -3,8 +3,7 @@
   "rootNamespace": "Relight",
   "references": [
     "Relight.Core",
-    "UnityEngine.UI",
-    "UnityEngine.EventSystems"
+    "UnityEngine.UI"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
