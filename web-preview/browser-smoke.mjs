@@ -155,6 +155,8 @@ try{
   await small.waitForFunction(()=>
     document.querySelector("#mobile-feedback")?.textContent.includes("MINE selected"),
     null,{timeout:3000});
+  assert.match(await small.locator("#mobile-feedback").textContent(),/glowing NEXT tile/,
+    "mobile tool feedback agrees with the current guided target");
   const feedbackBox=await small.locator("#mobile-feedback").boundingBox();
   const boardBox=await small.locator("#network-board").boundingBox();
   console.log("NARROW INLINE FEEDBACK",JSON.stringify({feedback:feedbackBox,board:boardBox}));
