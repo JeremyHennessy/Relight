@@ -1,0 +1,43 @@
+name: Core verification
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+  pull_request:
+    branches:
+      - main
+      - 'feat/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-simulation:
+    name: Compile and exercise deterministic gameplay core
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile and run standalone core checks
+        run: dotnet run --configuration Release --project verification/Relight.CoreChecks/Relight.CoreChecks.csproj
+      - name: Verify Unity manifest and assemblies are parseable JSON
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          paths = [Path("Packages/manifest.json"), *Path("Assets").rglob("*.asmdef")]
+          for path in paths:
+              with path.open(encoding="utf-8") as f:
+                  json.load(f)
+              print("JSON OK", path)
+          PY
+
+  # There is deliberately no 'Unity passed' badge here: full engine imports,
+  # PlayMode tests and mobile builds need a Unity editor with licensed tooling.
