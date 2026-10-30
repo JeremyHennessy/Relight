@@ -19,10 +19,12 @@ Build generators and relay connections -> power extractors -> earn scrap -> powe
 - Fairly shared capacity-constrained production, scrap consumption for restoration.
 - Adjacency bonuses for mines next to relays and restorers next to generators.
 - Emergency network repair preserving long-term progress.
-- Procedural planet art in the header, visibly recovering over three-region cycles.
+- Enlarged procedural planet art, visibly recovering over three-region cycles, with four visual biome palettes, clouds and settlement lights.
+- Non-blocking first-session missions with suggested placements, plus a region-restored celebration.
+- Save fallback to a previous valid snapshot when the primary save fails validation.
 - Mining and power upgrades, increasing region restoration targets.
 - JSON save via PlayerPrefs, capped offline progress, portrait UI.
-- The UI is still a prototype, but the planet art is procedurally generated; no audio or effects.
+- The UI remains a prototype with original procedural planet imagery; no audio. All rendering requires real Unity/device validation.
 
 ## Intended deeper gameplay (NOT IMPLEMENTED)
 - Three biome types with distinct power/resource constraints and visual recovery.
