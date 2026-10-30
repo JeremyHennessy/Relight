@@ -130,6 +130,13 @@ internal static class Program
         Check(!NetworkLayout.Calculate(double.NaN, 900).Valid,
             "nonfinite geometry input is rejected");
 
+        var unattendedWorld = WorldState.NewWorld();
+        unattendedWorld.SavedAtUnix = 100;
+        var unattended = new WorldModel(unattendedWorld);
+        unattended.ApplyOffline(100 + WorldModel.OfflineCapSeconds);
+        Console.WriteLine("PACING DIAGNOSTIC: eight hours unattended from a starter world restores " +
+            unattended.State.Region + " complete regions without player decisions.");
+
         var random = new Random(2841);
         var sandbox = new WorldModel(WorldState.NewWorld());
         for (int step = 0; step < 1000; step++)
