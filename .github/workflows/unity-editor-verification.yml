@@ -7,6 +7,7 @@ on:
     branches:
       - 'feat/**'
       - 'fix/**'
+      - 'build/**'
   workflow_dispatch:
 
 permissions:
