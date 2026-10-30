@@ -49,6 +49,11 @@ try{
   assert.match(await p.locator('[data-index="19"]').getAttribute("class"),/suggested/);
   await p.locator('[data-index="19"]').click();
   await p.waitForFunction(()=>document.querySelector("#mission-title")?.textContent.includes("scrap miner"));
+  assert.match(await p.locator("#mission-description").textContent(),/MINE is already selected for you/,
+    "guided mission instructions reflect the actual automatically selected tool");
+  const phoneToast=await p.locator("#toast").boundingBox();
+  assert.ok(phoneToast && phoneToast.y>=0 && phoneToast.y+phoneToast.height<=95,
+    "mobile feedback stays in top screen area instead of covering lower grid");
   assert.equal(await p.locator('.quick-tool[data-machine="3"]').getAttribute("aria-pressed"),"true",
     "next guided machine auto-selects on compact palette");
   assert.match(await p.locator('[data-index="7"]').getAttribute("class"),/suggested/);
@@ -133,6 +138,10 @@ try{
   await small.locator('.quick-tool[data-machine="5"]').click();
   await small.locator('[data-index="19"]').click();
   assert.match(await small.locator("#mission-title").textContent(),/scrap miner/i);
+  assert.match(await small.locator("#mission-description").textContent(),/MINE is already selected for you/);
+  const narrowToast=await small.locator("#toast").boundingBox();
+  assert.ok(narrowToast && narrowToast.y>=0 && narrowToast.y+narrowToast.height<=100,
+    "320px narrow-screen notifications must not obscure the lower play grid");
   await small.screenshot({path:"relight-narrow-320-playtest.png",fullPage:true,animations:"disabled"});
   await narrow.close();
 
