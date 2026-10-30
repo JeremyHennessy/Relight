@@ -68,7 +68,11 @@ internal static class Program
         region.Restoration = 99;
         var progression = new WorldModel(region);
         progression.Tick(10);
-        Check(progression.State.Region == 1, "restore enough progress to unlock region");
+        Check(progression.IsRegionReady, "restoration fills a claimable milestone");
+        Check(progression.State.Region == 0, "milestone never silently skips player decisions");
+        Check(progression.ClaimRegion(), "player can revive the ready region for free");
+        Check(progression.State.Region == 1, "claim advances precisely one region");
+        Check(!progression.ClaimRegion(), "unearned second region cannot be claimed");
 
         var upgrade = new WorldModel(WorldState.NewWorld());
         int capacity = upgrade.PowerCapacity();
@@ -114,8 +118,10 @@ internal static class Program
         Check(tutorial.GetFirstSessionGoal() == FirstSessionGoal.RestoreFirstRegion,
             "mission advances after mining expands");
         tutorial.Tick(150);
+        Check(tutorial.IsRegionReady, "first region becomes ready after restoration");
+        Check(tutorial.ClaimRegion(), "first region claim succeeds");
         Check(tutorial.GetFirstSessionGoal() == FirstSessionGoal.ContinueExploring,
-            "mission completes once a region is restored");
+            "mission completes once the player revives the region");
 
         var compact = NetworkLayout.Calculate(400, 300);
         Check(compact.Valid, "compact portrait panel has valid network geometry");
@@ -134,8 +140,19 @@ internal static class Program
         unattendedWorld.SavedAtUnix = 100;
         var unattended = new WorldModel(unattendedWorld);
         unattended.ApplyOffline(100 + WorldModel.OfflineCapSeconds);
-        Console.WriteLine("PACING DIAGNOSTIC: eight hours unattended from a starter world restores " +
-            unattended.State.Region + " complete regions without player decisions.");
+        Check(unattended.State.Region == 0,
+            "eight hours offline cannot auto-complete multiple regions");
+        Check(unattended.IsRegionReady,
+            "eight hours offline can prepare exactly one region to claim");
+        double spareScrap = unattended.State.Scrap;
+        unattended.Tick(100);
+        Check(unattended.State.Scrap > spareScrap,
+            "mining continues while a region is ready");
+        Check(unattended.State.Restoration == WorldModel.TargetForRegion(0),
+            "completed region does not consume further restoration resources");
+        Check(unattended.ClaimRegion() && !unattended.ClaimRegion(),
+            "offline milestone is claimed only once before new work");
+        Console.WriteLine("PACING RESULT: one free, claimable region after eight hours offline.");
 
         var random = new Random(2841);
         var sandbox = new WorldModel(WorldState.NewWorld());
