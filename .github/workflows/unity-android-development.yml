@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   android-development-apk:
-    name: Unity 6000.1.9f1 Android development APK
+    name: Unity 6000.3.27f1 Android development APK
     if: ${{ vars.RELIGHT_ANDROID_CI == 'enabled' && vars.RELIGHT_GAMECI_LICENSE_CONFIRMED == 'yes' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -56,7 +56,7 @@ jobs:
           UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
         with:
           projectPath: .
-          unityVersion: 6000.1.9f1
+          unityVersion: 6000.3.27f1
           targetPlatform: Android
           androidExportType: androidPackage
           buildMethod: Relight.Editor.RelightProjectSetup.BuildAndroid
