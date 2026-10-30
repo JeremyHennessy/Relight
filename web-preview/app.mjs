@@ -126,6 +126,13 @@ function render(force=false){
     if(m===1)choose(Machine.Extractor,false);
     lastGoal=m;
   }
+  // A mission change can happen without a new tool selection. Do not leave
+  // the "glowing NEXT tile" prompt on screen when no suggestion exists.
+  if(ready)
+    $("selected-tool-text").textContent="REGION READY · tap AWAKEN REGION above";
+  else if(m>=2)
+    $("selected-tool-text").textContent=selected===Machine.Empty?
+      "REMOVE selected · tap a structure":words[selected]+" selected · tap an empty square";
   $("mission-number").textContent=String(Math.min(m+1,4)).padStart(2,"0");
   $("mission-title").textContent=ready?"The world is ready. Awaken it!":stepTitles[m];
   $("mission-description").textContent=ready?"Tap the glowing AWAKEN REGION button above. No ads, no payment—this is your reward.":stepDescriptions[m];
