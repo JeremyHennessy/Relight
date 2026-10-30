@@ -1,0 +1,61 @@
+name: Relight Web Playtest — verify and publish
+on:
+  push:
+    branches:
+      - feat/relight-first-play-ux-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relight-web-playtest-pages
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Browser gameplay model and interface checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check static web JavaScript parses
+        run: |
+          node --check web-preview/model.mjs
+          node --check web-preview/app.mjs
+          node --check web-preview/model.test.mjs
+      - name: Run deterministic playable-game tests
+        run: node --test web-preview/model.test.mjs
+      - name: Check public static asset files
+        run: |
+          test -s web-preview/index.html
+          test -s web-preview/styles.css
+          test -s web-preview/favicon.svg
+          grep -q 'type="module" src="./app.mjs"' web-preview/index.html
+
+  deploy:
+    name: Publish Web Playtest to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: verify
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload browser application (no Unity build or secrets)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web-preview
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
