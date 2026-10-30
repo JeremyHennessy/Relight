@@ -12,7 +12,7 @@
 3. Select **Relight > Initialize Playable Scene**.
 4. Open **Assets/Scenes/Relight.unity** and press Play.
 5. Test building/removing structures, restoration, upgrades, and restart persistence.
-6. Open **Window > General > Test Runner** and run all **13** EditMode tests.
+6. Open **Window > General > Test Runner** and run all **14** EditMode tests.
 7. Verify the large planet preview, highlighted starter mission, different planet palettes, region-completion feedback, and the two-tap REPAIR action.
 8. Test a fresh install: place POWER next to LIFE, add another MINE, and complete the first region.
 9. Test corrupted primary-save recovery, restart persistence, and actual offline production on a device.
