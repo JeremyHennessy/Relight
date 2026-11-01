@@ -5,8 +5,16 @@ on:
       - feat/relight-first-play-ux-v2
     paths:
       - .github/workflows/relight-public-playtest-smoke.yml
+      - web-preview/app.mjs
+      - web-preview/browser-reliability.mjs
+      - web-preview/browser-smoke.mjs
+      - web-preview/favicon.svg
+      - web-preview/index.html
+      - web-preview/model.mjs
+      - web-preview/styles.css
       - web-preview/verify-hosted-assets.mjs
       - web-preview/verify-hosted-assets.test.mjs
+      - web-preview/model-reliability.test.mjs
   workflow_dispatch:
 
 permissions:
