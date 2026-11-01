@@ -696,9 +696,12 @@ try{
     const old={...freshCampaign(),region:1,scrap:50,savedAt:Math.floor(Date.now()/1000)};
     old.cells[13]=Machine.Relay;old.cells[17]=Machine.Extractor;
     old.campaign={version:1,phase:"expansion",mineKit:"redeemed"};
-    const original=JSON.stringify(old);
+    const original=JSON.stringify(old),originalCampaign=structuredClone(old.campaign),originalCells=old.cells.slice();
     return withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
-      assert.equal(await raw(page),original,"v1 save bytes are not upgraded or normalized");
+      const loadedV1=JSON.parse(await raw(page));
+      assert.deepEqual(loadedV1.campaign,originalCampaign,"v1 progression fields are not upgraded or normalized");
+      assert.deepEqual(loadedV1.cells,originalCells,"loading a v1 save preserves the existing machine layout");
+      assert.equal(Object.hasOwn(loadedV1.campaign,"firstInvestment"),false,"v1 never receives a v2 choice marker");
       assert.equal(await page.locator("#scene-choice").isVisible(),false);
       assert.equal(await page.locator("#scene-action").getAttribute("aria-label").then(s=>/second MINE/.test(s)),true);
       await clickSceneAction(page);
