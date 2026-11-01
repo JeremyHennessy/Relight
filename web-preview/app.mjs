@@ -168,9 +168,13 @@ $("upgrade-mining").addEventListener("click",()=>{
 $("upgrade-power").addEventListener("click",()=>{
   const r=upgrade(state,false);notice(r.message,!r.ok);if(r.ok){persist();render(true);}
 });
-$("revive").addEventListener("click",()=>{
+$("revive").addEventListener("click",event=>{
   const r=claim(state);
-  notice(r.message,!r.ok);if(r.ok){persist();render(true);}
+  notice(r.message,!r.ok);
+  if(r.ok){
+    persist();render(true);
+    if(event.detail===0)$("region-state").focus({preventScroll:true});
+  }
 });
 $("repair").addEventListener("click",()=>{
   if(!window.confirm("Reset the network to its starting layout? Structures will not be refunded. Region and upgrades stay saved."))return;
@@ -185,12 +189,15 @@ function closeGuide(startPlaying=false){
   storageSetFirst("yes");
   if(typeof welcome.close==="function"&&welcome.open)welcome.close();
   else welcome.removeAttribute("open");
-  // The visual planet intro is tall on a phone. After onboarding, put the
-  // mission and its suggested build tile in view instead of hiding gameplay
-  // below the fold. This affects navigation only, never the saved world.
+  // The visual planet intro is tall on a phone. After onboarding, bring the
+  // grid-local recovery status into view with the board just below it. This
+  // affects navigation only, never the saved world.
   if(startPlaying){
     const reducedMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    document.querySelector(".mission-banner")?.scrollIntoView({
+    const firstPlayTarget=window.matchMedia("(max-width: 650px)").matches?
+      document.querySelector("#mobile-feedback"):
+      document.querySelector(".network-card");
+    firstPlayTarget?.scrollIntoView({
       behavior:reducedMotion?"instant":"smooth",block:"start"
     });
   }
@@ -236,9 +243,10 @@ function render(force=false){
     eta===Infinity?(hasMine&&!hasConnectedMine?"Reconnect a MINE to fuel recovery":"Connect a MINE to fuel recovery"):
     eta>MAX_DISPLAYED_ETA_SECONDS?">1y active to awaken":
     "~"+readableEta(eta)+" active to awaken";
+  $("revive").hidden=!ready;
   $("revive").disabled=!ready;
   $("revive-label").textContent=ready?"AWAKEN REGION "+String(state.region+1).padStart(2,"0"):"AWAKEN REGION";
-  $("revive-hint").textContent=ready?"The region is ready. Awaken it for free and uncover more of the planet.":"Fill the recovery meter to awaken the next region.";
+  $("revive-hint").hidden=!ready;
   if(m!==lastGoal){
     if(m===0)choose(Machine.Generator,false);
     if(m===1)choose(Machine.Extractor,false);
@@ -247,13 +255,13 @@ function render(force=false){
   // A mission change can happen without a new tool selection. Do not leave
   // the "glowing NEXT tile" prompt on screen when no suggestion exists.
   if(ready)
-    $("selected-tool-text").textContent="REGION READY · tap AWAKEN REGION above";
+    $("selected-tool-text").textContent="REGION READY · tap AWAKEN REGION here";
   else if(m>=2)
     $("selected-tool-text").textContent=selected===Machine.Empty?
       "REMOVE selected · tap a structure":words[selected]+" selected · tap an empty square";
   $("mission-number").textContent=String(Math.min(m+1,4)).padStart(2,"0");
   $("mission-title").textContent=ready?"The world is ready. Awaken it!":stepTitles[m];
-  $("mission-description").textContent=ready?"Tap the glowing AWAKEN REGION button above. No ads, no payment—this is your reward.":stepDescriptions[m];
+  $("mission-description").textContent=ready?"Tap the glowing AWAKEN REGION button by the grid. No ads, no payment—this is your reward.":stepDescriptions[m];
   [...$("mission-stages").children].forEach((child,i)=>{child.className=i<m?"done":i===m?"active":"";});
   const hint=suggested(state),cellKey=state.cells.join(",")+"|"+hint;
   if(force||cellKey!==lastCells){

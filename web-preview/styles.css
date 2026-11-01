@@ -57,3 +57,15 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
 }
 
 .progress-foot #region-state{max-width:60%;color:#b9d9d0;font-weight:700;text-align:right}
+
+.board-recovery{margin:16px 0 2px;padding:11px 13px;background:linear-gradient(115deg,rgba(26,57,65,.58),rgba(16,31,46,.72));border:1px solid rgba(120,214,195,.17);border-radius:12px}
+.board-recovery .progress-block{max-width:none;margin:0}
+.board-recovery .progress-heading{font-size:9px}
+.board-recovery .progress-heading strong{font-size:16px}
+.board-recovery .track{height:7px;margin-top:8px}
+.board-recovery .progress-foot{margin-top:7px;font-size:9px}
+.board-recovery .revive-button{max-width:none;margin-top:10px;height:46px;font-size:10px}
+.board-recovery .revive-button[hidden],.board-recovery .revive-hint[hidden]{display:none}
+.board-recovery .revive-hint{max-width:none;margin-top:7px;text-align:left}
+@media(max-width:650px){.board-recovery{margin:12px 0 0;padding:9px 10px}.board-recovery .progress-block{margin:0}.board-recovery .track{margin-top:7px}.board-recovery .revive-button{margin-top:8px;height:46px}}
+.board-recovery #region-state:focus-visible{outline:2px solid var(--aqua);outline-offset:3px;border-radius:4px}

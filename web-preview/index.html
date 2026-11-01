@@ -40,13 +40,6 @@
         </div>
       </div>
       <div id="save-status" class="save-status" role="status" aria-live="polite" aria-atomic="true" hidden></div>
-      <div class="progress-block">
-        <div class="progress-heading"><span>BIOSPHERE RECOVERY</span><strong id="restored-percent">0%</strong></div>
-        <div class="track" role="progressbar" id="recovery-progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Region recovery"><span id="recovery-fill"></span></div>
-        <div class="progress-foot"><span id="recovery-rate">Restoring +0.7 / sec</span><span id="region-state">Restoration in progress</span></div>
-      </div>
-      <button id="revive" class="revive-button" disabled type="button"><span class="button-star" aria-hidden="true">✦</span><span id="revive-label">AWAKEN REGION</span><span aria-hidden="true" class="revive-arrow">↗</span></button>
-      <div class="revive-hint" id="revive-hint">Fill the recovery meter to awaken the next region.</div>
     </div>
     <div class="planet-scene" aria-label="Live view of the recovering planet">
       <div class="orbital orb-one"></div><div class="orbital orb-two"></div>
@@ -77,6 +70,15 @@
         <button type="button" class="quick-tool" data-machine="2" aria-pressed="false" aria-label="Energy relay, 4 scrap"><strong aria-hidden="true">◇</strong><span>RELAY</span><small>4</small></button>
         <button type="button" class="quick-tool" data-machine="4" aria-pressed="false" aria-label="Life engine, 18 scrap"><strong aria-hidden="true">✳</strong><span>LIFE</span><small>18</small></button>
         <button type="button" class="quick-tool" data-machine="0" aria-pressed="false" aria-label="Remove a structure"><strong aria-hidden="true">×</strong><span>REMOVE</span><small>FREE</small></button>
+      </div>
+      <div class="board-recovery" role="group" aria-label="Region recovery status">
+        <div class="progress-block">
+          <div class="progress-heading"><span>BIOSPHERE RECOVERY</span><strong id="restored-percent">0%</strong></div>
+          <div class="track" role="progressbar" id="recovery-progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Region recovery"><span id="recovery-fill"></span></div>
+          <div class="progress-foot"><span id="recovery-rate">Restoring +0.7 / sec</span><span id="region-state" tabindex="-1">Restoration in progress</span></div>
+        </div>
+        <button id="revive" class="revive-button" hidden disabled type="button" aria-describedby="revive-hint"><span class="button-star" aria-hidden="true">✦</span><span id="revive-label">AWAKEN REGION</span><span aria-hidden="true" class="revive-arrow">↗</span></button>
+        <div class="revive-hint" id="revive-hint" hidden>The region is ready. Awaken it for free and uncover more of the planet.</div>
       </div>
       <div class="board-wrap"><div class="network-board" id="network-board">
         <svg class="network-lines" id="network-lines" viewBox="0 0 500 500" preserveAspectRatio="none" aria-hidden="true"></svg>

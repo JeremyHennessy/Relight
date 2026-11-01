@@ -367,6 +367,82 @@ try{
     });
   });
 
+  await check("board-local recovery fits every layout and awaken claims once from the keyboard",async()=>{
+    for(const [width,height] of [[320,640],[390,844],[1440,900]])
+      await withPage({width,height,initial:{
+        [saveKey]:savedWorld({restoration:50}),[firstKey]:"yes"
+      }},async page=>{
+        assert.equal(await page.locator(".network-card #recovery-progress").count(),1);
+        assert.equal(await page.locator(".network-card #revive").count(),1);
+        assert.equal(await page.locator("#revive").isVisible(),false,
+          "AWAKEN is hidden until the region is ready");
+        const recovery=await page.locator(".board-recovery").boundingBox();
+        const board=await page.locator("#network-board").boundingBox();
+        assert.ok(recovery&&board&&recovery.y+recovery.height<=board.y,
+          `${width}px recovery panel overlaps its board`);
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),
+          `${width}px layout has horizontal overflow`);
+      });
+
+    for(const [width,height] of [[320,640],[390,844],[1440,900]])
+      await withPage({width,height,initial:{
+        [saveKey]:savedWorld({restoration:100}),[firstKey]:"yes"
+      }},async page=>{
+        assert.equal(await page.locator("#revive").isVisible(),true,
+          `${width}px ready state exposes the contextual action`);
+        const action=await page.locator("#revive").boundingBox();
+        assert.ok(action&&action.height>=44,
+          `${width}px AWAKEN target is at least 44px tall`);
+        const recovery=await page.locator(".board-recovery").boundingBox();
+        const board=await page.locator("#network-board").boundingBox();
+        assert.ok(recovery&&board&&recovery.y+recovery.height<=board.y,
+          `${width}px ready action overlaps its board`);
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),
+          `${width}px ready state has horizontal overflow`);
+      });
+
+    await withPage({width:390,height:844,initial:{
+      [saveKey]:savedWorld({restoration:100}),[firstKey]:"yes"
+    }},async page=>{
+      const action=page.locator("#revive");
+      assert.equal(await action.isVisible(),true);
+      assert.equal(await action.isEnabled(),true);
+      await page.locator(".quick-tool").last().focus();
+      await page.keyboard.press("Tab");
+      assert.equal(await page.evaluate(()=>document.activeElement.id),"revive",
+        "keyboard tab order reaches the board-local action after machine selection");
+      assert.equal(await action.evaluate(el=>el.matches(":focus-visible")),true,
+        "keyboard focus remains visibly outlined");
+      await page.keyboard.press("Enter");
+      const afterClaim=JSON.parse(await raw(page));
+      assert.equal(afterClaim.region,1,"keyboard activation advances one region");
+      assert.equal(afterClaim.restoration,0,"the next region begins at zero progress");
+      assert.equal(await action.isVisible(),false,
+        "the contextual button hides after its region is claimed");
+      assert.equal(await page.evaluate(()=>document.activeElement.id),"region-state",
+        "keyboard focus returns to the local progress status after claiming");
+      assert.equal(await page.locator("#region-state").evaluate(el=>el.matches(":focus-visible")),true,
+        "the returned keyboard focus is visibly outlined");
+      const focusStyle=await page.locator("#region-state").evaluate(el=>getComputedStyle(el).outlineStyle);
+      assert.equal(focusStyle,"solid","the theme-consistent focus outline is rendered");
+
+      const writes=await page.evaluate(()=>window.__relightTest.writeEvents());
+      await page.evaluate(()=>{
+        const button=document.querySelector("#revive");
+        for(let i=0;i<2;i++)button.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true}));
+      });
+      const afterRepeats=JSON.parse(await raw(page));
+      assert.equal(afterRepeats.region,1,"rapid repeated clicks cannot claim a second region");
+      assert.equal(afterRepeats.restoration,0,"repeated clicks do not reset the new region");
+      assert.equal(await page.evaluate(()=>window.__relightTest.writeEvents()),writes,
+        "rejected repeat clicks do not write another claim");
+      await page.reload({waitUntil:"networkidle"});
+      assert.match(await page.locator("#sector").textContent(),/SECTOR 02/);
+      assert.equal(await page.locator("#revive").isVisible(),false,
+        "reload preserves the single claim and hides the next action until ready");
+    });
+  });
+
   await check("zero mining distinguishes an exhausted fuel supply from enough stored scrap",async()=>{
     const cells=fresh().cells;cells[11]=Machine.Empty;
     for(const [scrap,expected] of [[0,/Connect a MINE to fuel recovery/],[99,/Connect a MINE to fuel recovery/],[100,/active to awaken/]])

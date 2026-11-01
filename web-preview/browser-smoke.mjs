@@ -22,6 +22,10 @@ try{
   await p.goto(origin,{waitUntil:"networkidle"});
   assert.equal(await p.locator(".tile").count(),25,"5x5 grid rendered");
   assert.equal(await p.locator("#welcome").evaluate(e=>e.open),true,"first-launch tutorial appears");
+  assert.equal(await p.locator(".network-card #recovery-progress").count(),1,
+    "the recovery meter sits inside the grid card");
+  assert.equal(await p.locator(".network-card #revive").count(),1,
+    "the contextual awaken action shares the grid card");
   assert.match(await p.locator("#region-state").textContent(),/active to awaken/,
     "a new player sees an estimated active-play time to the first region");
   await p.screenshot({path:"relight-mobile-onboarding.png",fullPage:true,animations:"disabled"});
@@ -117,10 +121,15 @@ try{
     sessionStorage.setItem(marker,"yes");
   });
   await p.reload({waitUntil:"networkidle"});
-  await p.waitForFunction(()=>!document.querySelector("#revive").disabled,
+  await p.waitForFunction(()=>!document.querySelector("#revive").disabled&&!document.querySelector("#revive").hidden,
     null,{timeout:10000});
-  assert.match(await p.locator("#selected-tool-text").textContent(),/tap AWAKEN REGION/,
+  assert.match(await p.locator("#selected-tool-text").textContent(),/tap AWAKEN REGION here/,
     "when region is ready the guide prioritizes the revival action");
+  assert.match(await p.locator("#mission-description").textContent(),/button by the grid/);
+  const recoveryBox=await p.locator(".board-recovery").boundingBox();
+  const readyBoardBox=await p.locator("#network-board").boundingBox();
+  assert.ok(recoveryBox&&readyBoardBox&&recoveryBox.y+recoveryBox.height<=readyBoardBox.y,
+    "ready recovery action stays above, and does not overlap, its board");
   assert.equal(await p.locator("#restored-percent").textContent(),"100%");
   const planetAtReady=await p.locator("#planet").evaluate(e=>e.toDataURL());
   const planetNameAtReady=await p.locator("#planet-name").textContent();
@@ -140,6 +149,8 @@ try{
   await p.reload({waitUntil:"networkidle"});
   assert.match(await p.locator("#sector").textContent(),/SECTOR 02/,
     "region advancement is preserved across reload");
+  assert.equal(await p.locator("#revive").isVisible(),false,
+    "the contextual action hides again until the next region is ready");
   assert.match(await p.locator("#region-state").textContent(),/active to awaken/,
     "the next region starts with a new active-play estimate after reload");
   await mobile.close();
@@ -156,6 +167,20 @@ try{
   await small.goto(origin,{waitUntil:"networkidle"});
   assert.equal(await small.locator("#welcome").evaluate(e=>e.open),true);
   await small.locator("#begin").click({timeout:6000});
+  await small.waitForFunction(()=>{
+    const instructions=document.querySelector("#mobile-feedback").getBoundingClientRect();
+    const recovery=document.querySelector(".board-recovery").getBoundingClientRect();
+    const board=document.querySelector("#network-board").getBoundingClientRect();
+    return scrollY>100&&instructions.top>=0&&instructions.bottom<=recovery.top&&
+      recovery.top>=0&&recovery.bottom<=board.top&&
+      board.top>=0&&board.bottom<=innerHeight;
+  },null,{timeout:7000});
+  assert.match(await small.locator("#mobile-feedback").textContent(),/glowing NEXT tile/,
+    "first-play guidance remains beside the board after scrolling");
+  assert.equal(await small.locator(".tile.suggested").isVisible(),true,
+    "the highlighted NEXT tile is visible with the local recovery panel on a 320px phone");
+  assert.equal(await small.locator(".quick-tool").first().isVisible(),true,
+    "the first-play machine controls remain usable alongside the board");
   const narrowTool=await small.locator('.quick-tool[data-machine="5"]').boundingBox();
   assert.ok(narrowTool.width>=44&&narrowTool.height>=44,
     "320px handset tool buttons must stay touch-friendly");
