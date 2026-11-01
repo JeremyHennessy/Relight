@@ -6,6 +6,7 @@ const MAX_DISPLAYED_ETA_SECONDS=365*24*60*60;
 const glyph={0:"+",1:"✦",2:"◇",3:"⬡",4:"✳",5:"ϟ"};
 const words={0:"REMOVE",1:"CORE",2:"RELAY",3:"MINE",4:"LIFE",5:"POWER"};
 const kinds={0:"empty",1:"core",2:"relay",3:"extractor",4:"restorer",5:"generator"};
+const statusWords={active:"ACTIVE",disconnected:"OFF","fuel-starved":"FUEL","fuel-limited":"LIMIT",throttled:"LOW"};
 const stepTitles=[
   "Give the life engine a boost.",
   "Build a second scrap miner.",
@@ -100,6 +101,64 @@ function persist(){
   markStorageAvailable();
 }
 const readable=n=>n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"K":Number(n).toFixed(0);
+function machineStatuses(type,index,r){
+  if(type===Machine.Empty)return [];
+  if(!r.connected[index])return ["disconnected"];
+  const statuses=[];
+  if(type===Machine.Restorer&&state.scrap<=0&&r.used>0){
+    if(r.mined===0)statuses.push("fuel-starved");
+    else if(r.mined<r.used)statuses.push("fuel-limited");
+  }
+  if((type===Machine.Extractor||type===Machine.Restorer)&&r.fraction<1)statuses.push("throttled");
+  return statuses.length?statuses:["active"];
+}
+function effectiveRecoveryRate(r){
+  return state.scrap<=0&&r.used>r.mined&&r.used>0?
+    r.restored*Math.min(1,r.mined/r.used):r.restored;
+}
+function machineStatusLabel(statuses){
+  if(statuses.includes("disconnected"))return "OFF";
+  if(statuses.includes("fuel-starved"))return "FUEL";
+  if(statuses.includes("fuel-limited")&&statuses.includes("throttled"))return "FUEL/LOW";
+  if(statuses.includes("fuel-limited"))return "LIMIT";
+  if(statuses.includes("throttled"))return "LOW";
+  return statuses.includes("active")?"ACTIVE":"";
+}
+function machineStatusDescription(statuses,r){
+  const descriptions=[];
+  if(statuses.includes("disconnected"))descriptions.push("disconnected from the reactor");
+  if(statuses.includes("fuel-starved"))descriptions.push("fuel-starved; no scrap or mining available");
+  if(statuses.includes("fuel-limited"))descriptions.push("fuel-limited; mining supplies "+Math.round(Math.min(1,r.mined/r.used)*100)+" percent of LIFE demand");
+  if(statuses.includes("throttled"))descriptions.push("power-throttled to "+Math.round(r.fraction*100)+" percent output");
+  if(statuses.includes("active"))descriptions.push("active and connected");
+  return descriptions.join("; ");
+}
+function machineExplanation(r){
+  if(selected===Machine.Empty)return "REMOVE · tap a structure to clear it; choose a machine to inspect its status.";
+  const machines=[];
+  for(let i=0;i<state.cells.length;i++)if(state.cells[i]===selected)machines.push(i);
+  if(!machines.length)return words[selected]+" · none built yet. Choose an empty tile to add one.";
+  const counts={active:0,disconnected:0,"fuel-starved":0,"fuel-limited":0,throttled:0};
+  for(const i of machines)for(const status of machineStatuses(selected,i,r))counts[status]++;
+  const summary=Object.entries(counts).filter(([,count])=>count)
+    .map(([name,count])=>count+" "+({"fuel-starved":"fuel-starved","fuel-limited":"fuel-limited",throttled:"power-throttled"}[name]||name)).join(", ");
+  const details=[];
+  if(counts.disconnected)details.push("connect a RELAY path to the reactor");
+  if(counts["fuel-starved"])details.push("no scrap or mining is available to LIFE");
+  if(counts["fuel-limited"])details.push("mining supplies "+Math.round(Math.min(1,r.mined/r.used)*100)+"% of LIFE fuel use");
+  if(counts.throttled)details.push("connected output is limited to "+Math.round(r.fraction*100)+"% by power capacity");
+  if(selected===Machine.Restorer){
+    const fuelLimited=state.scrap<=0&&r.used>r.mined;
+    const rate=effectiveRecoveryRate(r);
+    details.push("network recovery "+(fuelLimited?"currently":"up to")+" +"+rate.toFixed(2)+"/s");
+  }else if(counts.active){
+    if(selected===Machine.Extractor)details.push("network mining +"+r.mined.toFixed(2)+" scrap/s");
+    else if(selected===Machine.Generator)details.push("usable network capacity "+r.capacity);
+    else if(selected===Machine.Relay)details.push("connected to the reactor network");
+    else details.push("reactor network online");
+  }
+  return words[selected]+" · "+summary+(details.length?" · "+details.join("; "):"")+".";
+}
 function readableEta(seconds){
   let total=Math.ceil(seconds);
   if(total<60)return total+"s";
@@ -133,12 +192,14 @@ for(let i=0;i<25;i++){
   btn.type="button";btn.className="tile empty";btn.dataset.index=i;
   const symbol=document.createElement("span");symbol.className="tile-icon";
   const label=document.createElement("span");label.className="tile-name";
-  btn.append(symbol,label);
+  const status=document.createElement("span");status.className="tile-status";status.setAttribute("aria-hidden","true");
+  btn.append(symbol,label,status);
   btn.addEventListener("click",()=>tap(i));
   $("tiles").append(btn);tiles.push({btn,symbol,label});
 }
 function choose(machine,manual=true){
   selected=machine;
+  $("machine-readout").textContent=machineExplanation(rates(state));
   document.querySelectorAll(".tool, .quick-tool").forEach(el=>{
     el.setAttribute("aria-pressed",String(Number(el.dataset.machine)===selected));
   });
@@ -211,6 +272,8 @@ if(away>2)notice("Welcome back! Your network worked for "+Math.floor(away/60)+" 
 function render(force=false){
   if(!valid(state)){console.error("Invalid world, resetting safely");state=fresh();persist();}
   const r=rates(state),m=mission(state),ready=isReady(state),percentage=Math.min(100,100*state.restoration/TARGET(state.region));
+  const explanation=machineExplanation(r);
+  if($("machine-readout").textContent!==explanation)$("machine-readout").textContent=explanation;
   $("sector").textContent="SECTOR "+String(state.region+1).padStart(2,"0");
   $("scrap").textContent=readable(state.scrap);
   const totalMachines=state.cells.filter(type=>type!==Machine.Empty&&type!==Machine.Core).length;
@@ -230,7 +293,7 @@ function render(force=false){
   $("restored-percent").textContent=Math.floor(percentage)+"%";
   $("recovery-fill").style.width=percentage+"%";
   $("recovery-progress").setAttribute("aria-valuenow",String(Math.floor(percentage)));
-  $("recovery-rate").textContent="Restore +"+r.restored.toFixed(2)+"/s";
+  $("recovery-rate").textContent="Restore +"+effectiveRecoveryRate(r).toFixed(2)+"/s";
   const eta=estimateRecoverySeconds(state);
   const target=TARGET(state.region);
   const hasLife=state.cells.includes(Machine.Restorer);
@@ -263,16 +326,20 @@ function render(force=false){
   $("mission-title").textContent=ready?"The world is ready. Awaken it!":stepTitles[m];
   $("mission-description").textContent=ready?"Tap the glowing AWAKEN REGION button by the grid. No ads, no payment—this is your reward.":stepDescriptions[m];
   [...$("mission-stages").children].forEach((child,i)=>{child.className=i<m?"done":i===m?"active":"";});
-  const hint=suggested(state),cellKey=state.cells.join(",")+"|"+hint;
+  const hint=suggested(state),cellKey=state.cells.join(",")+"|"+hint+"|"+(state.scrap>0?"fuel":"empty")+"|"+r.fraction;
   if(force||cellKey!==lastCells){
     lastCells=cellKey;
     const links=r.connected;
     tiles.forEach(({btn,symbol,label},i)=>{
       const type=state.cells[i];
-      btn.className="tile "+kinds[type]+(type!==0&&!links[i]?" disconnected":"")+(i===hint&&type===0?" suggested":"");
+      const statuses=machineStatuses(type,i,r);
+      const statusLabel=machineStatusLabel(statuses);
+      btn.className="tile "+kinds[type]+statuses.map(status=>" state-"+status).join("")+(i===hint&&type===0?" suggested":"");
       symbol.textContent=glyph[type];label.textContent=type===0?"":words[type];
-      btn.setAttribute("aria-label",(type===0?"Empty tile":"Tile with "+words[type])+" row "+(Math.floor(i/5)+1)+", column "+(i%5+1)+(i===hint?", suggested next tile":""));
-      btn.title=type===0?"Tap to build "+words[selected]:words[type]+(links[i]?" · connected":" · not connected");
+      btn.querySelector(".tile-status").textContent=statusLabel;
+      const accessibleStatus=machineStatusDescription(statuses,r);
+      btn.setAttribute("aria-label",(type===0?"Empty tile":"Tile with "+words[type])+" row "+(Math.floor(i/5)+1)+", column "+(i%5+1)+(statuses.length?"; "+accessibleStatus:"")+(i===hint?", suggested next tile":""));
+      btn.title=type===0?"Tap to build "+words[selected]:words[type]+(statuses.length?" · "+accessibleStatus:"");
     });
     const lines=[];
     for(let i=0;i<25;i++)if(links[i]){

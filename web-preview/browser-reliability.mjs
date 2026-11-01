@@ -3,7 +3,7 @@
 // reconstructed or claimed to be identical.
 import assert from "node:assert/strict";
 import {chromium} from "playwright";
-import {fresh,Machine,MINING_OFFLINE,advance,estimateRecoverySeconds} from "./model.mjs";
+import {fresh,Machine,MINING_OFFLINE,advance,rates,estimateRecoverySeconds} from "./model.mjs";
 
 const origin=process.env.RELIGHT_BROWSER_URL||"http://127.0.0.1:8765";
 const saveKey="relight.webplaytest.v1";
@@ -529,6 +529,156 @@ try{
         "~"+readableEta(estimateRecoverySeconds(resumedAgain))+" active to awaken",
         "a second reload recalculates from the latest persisted state");
     });
+  });
+
+  await check("machine badges and selected explanation follow active, disconnected, fuel, and power states",async()=>{
+    const active=savedWorld({scrap:50});
+    await withPage({initial:{[saveKey]:active,[firstKey]:"yes"}},async page=>{
+      await page.locator('.quick-tool[data-machine="3"]').click();
+      await page.waitForFunction(()=>document.querySelector("#machine-readout").textContent.includes("network mining"));
+      assert.match(await page.locator('[data-index="11"]').getAttribute("class"),/state-active/);
+      assert.equal(await page.locator('[data-index="11"] .tile-status').textContent(),"ACTIVE");
+      assert.match(await page.locator('[data-index="11"]').getAttribute("aria-label"),/active and connected/);
+      assert.match(await page.locator("#machine-readout").textContent(),/MINE · 1 active .*network mining \+\d+\.\d{2} scrap\/s/);
+      await page.locator('.quick-tool[data-machine="2"]').click();
+      assert.match(await page.locator("#machine-readout").textContent(),/RELAY · 1 active/);
+      await page.locator('.quick-tool[data-machine="3"]').click();
+      assert.equal(await page.locator('.quick-tool[data-machine="3"]').getAttribute("aria-pressed"),"true");
+      assert.equal(JSON.parse(await raw(page)).cells[7],Machine.Empty,
+        "repeated tool selection does not place or remove a structure");
+      await page.locator('[data-index="7"]').click();
+      assert.match(await page.locator('[data-index="7"]').getAttribute("class"),/extractor state-throttled/,
+        "the tapped tile is built normally and immediately reflects the new power shortage");
+      await page.reload({waitUntil:"networkidle"});
+      assert.equal(await page.locator('[data-index="7"] .tile-name').textContent(),"MINE");
+      assert.equal(await page.locator('[data-index="7"] .tile-status').textContent(),"LOW",
+        "the placed machine's state is derived again after reload");
+      await page.locator('.quick-tool[data-machine="0"]').click();
+      assert.match(await page.locator("#machine-readout").textContent(),/tap a structure to clear it; choose a machine to inspect its status/);
+      assert.equal(JSON.parse(await raw(page)).cells[7],Machine.Extractor,
+        "selecting REMOVE is descriptive and does not hijack tile placement/removal");
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+    });
+
+    const disconnectedCells=fresh().cells;disconnectedCells[0]=Machine.Generator;
+    await withPage({width:320,initial:{
+      [saveKey]:savedWorld({cells:disconnectedCells,scrap:50}),[firstKey]:"yes"
+    }},async page=>{
+      await page.locator('.quick-tool[data-machine="5"]').click();
+      await page.waitForFunction(()=>document.querySelector("#machine-readout").textContent.includes("connect a RELAY path"));
+      assert.match(await page.locator('[data-index="0"]').getAttribute("class"),/state-disconnected/);
+      assert.equal(await page.locator('[data-index="0"] .tile-status').textContent(),"OFF");
+      assert.match(await page.locator('[data-index="0"]').getAttribute("aria-label"),/disconnected from the reactor/);
+      assert.match(await page.locator("#machine-readout").textContent(),/POWER · 1 disconnected · connect a RELAY path/);
+      await page.locator('.quick-tool[data-machine="2"]').click();
+      await page.locator('[data-index="10"]').click();
+      await page.locator('[data-index="5"]').click();
+      await page.waitForFunction(()=>document.querySelector('[data-index="0"]').classList.contains("state-active"));
+      assert.equal(await page.locator('[data-index="0"] .tile-status').textContent(),"ACTIVE",
+        "building a connected relay path updates machine state without changing placement interaction");
+      await page.reload({waitUntil:"networkidle"});
+      assert.equal(await page.locator('[data-index="0"] .tile-status').textContent(),"ACTIVE",
+        "the connected status is reconstructed from the saved grid after reload");
+      const saved=JSON.parse(await raw(page));
+      assert.equal(saved.cells[10],Machine.Relay);assert.equal(saved.cells[5],Machine.Relay);
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),
+        "status badges and readout fit a 320px viewport");
+    });
+
+    const dryCells=fresh().cells;dryCells[11]=Machine.Empty;
+    await withPage({width:390,initial:{
+      [saveKey]:savedWorld({cells:dryCells,scrap:0}),[firstKey]:"yes"
+    }},async page=>{
+      await page.locator('.quick-tool[data-machine="4"]').click();
+      await page.waitForFunction(()=>document.querySelector("#machine-readout").textContent.includes("no scrap or mining"));
+      assert.match(await page.locator('[data-index="14"]').getAttribute("class"),/state-fuel/);
+      assert.equal(await page.locator('[data-index="14"] .tile-status').textContent(),"FUEL");
+      assert.match(await page.locator('[data-index="14"]').getAttribute("aria-label"),/fuel-starved/);
+      assert.match(await page.locator("#machine-readout").textContent(),/LIFE · 1 fuel-starved · no scrap or mining/);
+    });
+
+    const partialFuelCells=fresh().cells;
+    partialFuelCells[7]=Machine.Restorer;partialFuelCells[9]=Machine.Generator;
+    await withPage({initial:{
+      [saveKey]:savedWorld({cells:partialFuelCells,scrap:0}),[firstKey]:"yes"
+    }},async page=>{
+      await page.locator('.quick-tool[data-machine="4"]').click();
+      const state=JSON.parse(await raw(page)),network=rates(state);
+      const expected=network.restored*network.mined/network.used;
+      assert.ok(network.mined>0&&network.mined<network.used,"fixture has partial mining but a larger LIFE fuel demand");
+      const simulated={...state,cells:state.cells.slice()};advance(simulated,.016);
+      assert.ok(Math.abs((simulated.restoration-state.restoration)/.016-expected)<.01,
+        "displayed sustainable recovery matches an independent model advance");
+      assert.match(await page.locator('[data-index="7"]').getAttribute("class"),/state-fuel-limited/);
+      assert.equal(await page.locator('[data-index="7"] .tile-status').textContent(),"LIMIT");
+      assert.match(await page.locator('[data-index="7"]').getAttribute("aria-label"),/fuel-limited; mining supplies 71 percent of LIFE demand/);
+      assert.match(await page.locator("#machine-readout").textContent(),/fuel-limited · mining supplies 71% of LIFE fuel use/);
+      assert.ok((await page.locator("#machine-readout").textContent()).includes("network recovery currently +"+expected.toFixed(2)+"/s"));
+      assert.equal(await page.locator("#recovery-rate").textContent(),"Restore +"+expected.toFixed(2)+"/s",
+        "the region meter uses the same current fuel-limited rate");
+    });
+
+    const throttledCells=fresh().cells;
+    throttledCells[7]=Machine.Restorer;throttledCells[17]=Machine.Extractor;throttledCells[8]=Machine.Restorer;
+    await withPage({initial:{
+      [saveKey]:savedWorld({cells:throttledCells,scrap:50}),[firstKey]:"yes"
+    }},async page=>{
+      await page.locator('.quick-tool[data-machine="4"]').click();
+      await page.waitForFunction(()=>document.querySelector("#machine-readout").textContent.includes("power capacity"));
+      assert.match(await page.locator('[data-index="14"]').getAttribute("class"),/state-throttled/);
+      assert.equal(await page.locator('[data-index="14"] .tile-status').textContent(),"LOW");
+      assert.match(await page.locator('[data-index="14"]').getAttribute("aria-label"),/power-throttled to 40 percent/);
+      assert.match(await page.locator("#machine-readout").textContent(),/LIFE · 3 power-throttled · connected output is limited to 40% by power capacity/);
+    });
+
+    const combinedCells=fresh().cells;
+    combinedCells[7]=Machine.Restorer;combinedCells[8]=Machine.Restorer;
+    combinedCells[9]=Machine.Generator;combinedCells[17]=Machine.Restorer;
+    await withPage({initial:{
+      [saveKey]:savedWorld({cells:combinedCells,scrap:0}),[firstKey]:"yes"
+    }},async page=>{
+      await page.locator('.quick-tool[data-machine="4"]').click();
+      const state=JSON.parse(await raw(page)),network=rates(state);
+      assert.ok(network.mined<network.used&&network.fraction<1,
+        "fixture has both a fuel deficit and a connected power shortage");
+      const expected=network.restored*network.mined/network.used;
+      const simulated={...state,cells:state.cells.slice()};advance(simulated,.016);
+      assert.ok(Math.abs((simulated.restoration-state.restoration)/.016-expected)<.01,
+        "combined-bottleneck rate matches an independent model advance");
+      const tile=page.locator('[data-index="7"]');
+      assert.match(await tile.getAttribute("class"),/state-fuel-limited.*state-throttled/);
+      assert.equal(await tile.locator(".tile-status").textContent(),"FUEL/LOW");
+      assert.match(await tile.getAttribute("aria-label"),/fuel-limited; mining supplies .* percent of LIFE demand; power-throttled to .* percent output/);
+      const explanation=await page.locator("#machine-readout").textContent();
+      assert.match(explanation,/fuel-limited/);assert.match(explanation,/power-throttled/);
+      assert.ok(explanation.includes("network recovery currently +"+expected.toFixed(2)+"/s"));
+      assert.equal(await page.locator("#recovery-rate").textContent(),"Restore +"+expected.toFixed(2)+"/s",
+        "the region meter includes both fuel and power limits through actual network rates");
+    });
+  });
+
+  await check("machine state remains visible at phone and desktop sizes and flow is static for reduced motion",async()=>{
+    for(const [width,height] of [[320,640],[390,844],[1440,900]])
+      await withPage({width,height,initial:{[saveKey]:savedWorld(),[firstKey]:"yes"}},async page=>{
+        assert.equal(await page.locator(".tile-status").count(),25);
+        assert.equal(await page.locator('[data-index="11"] .tile-status').textContent(),"ACTIVE");
+        assert.equal(await page.locator('[data-index="12"] .tile-status').textContent(),"ACTIVE");
+        assert.match(await page.locator("#machine-readout").textContent(),/POWER · none built yet/);
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),
+          `${width}px network state has horizontal overflow`);
+        if(width===320){
+          const tile=await page.locator('[data-index="11"]').boundingBox();
+          const badge=await page.locator('[data-index="11"] .tile-status').boundingBox();
+          assert.ok(tile&&badge&&badge.width<tile.width&&badge.height<tile.height,
+            "status badge stays inside its machine tile");
+        }
+        await page.emulateMedia({reducedMotion:"reduce"});
+        const wire=page.locator(".wire-live").first();
+        assert.ok(await wire.count()>0,String(width)+"px connected fixture should render an energy link");
+        const motion=await wire.evaluate(el=>({name:getComputedStyle(el).animationName,dash:getComputedStyle(el).strokeDasharray}));
+        assert.equal(motion.name,"none","reduced motion keeps energy links as a static line");
+        assert.equal(motion.dash,"none","static flow has no moving dash pattern");
+      });
   });
 
   const crowdedCells=Array(25).fill(Machine.Relay);crowdedCells[12]=Machine.Core;
