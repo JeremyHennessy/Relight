@@ -408,8 +408,8 @@ try{
     const disconnected=fresh();disconnected.cells[11]=Machine.Empty;disconnected.cells[0]=Machine.Extractor;disconnected.scrap=0;
     for(const world of [empty,disconnected]){
       await page.evaluate(value=>window.__relightTest.setRaw("relight.webplaytest.v1",value),JSON.stringify(world));
-      await page.evaluate(()=>window.location.reload());
-      await page.waitForFunction(()=>document.querySelector("#tutorial-skip")?.hidden===false);
+      await page.reload({waitUntil:"networkidle"});
+      await page.locator("#tutorial-skip").waitFor({state:"visible"});
       assert.match(await page.locator("#mission-description").textContent(),/No connected MINE produces scrap/);
       assert.doesNotMatch(await page.locator("#mission-description").textContent(),/Wait for MINE production/);
       assert.match(await page.locator("#mobile-feedback").textContent(),/Reconnect one or replay in practice/);
@@ -418,8 +418,8 @@ try{
     }
     const ready=fresh();ready.cells[9]=Machine.Restorer;ready.scrap=0;ready.restoration=100;ready.savedAt=Math.floor(Date.now()/1000);
     await page.evaluate(value=>window.__relightTest.setRaw("relight.webplaytest.v1",value),JSON.stringify(ready));
-    await page.evaluate(()=>window.location.reload());
-    await page.waitForFunction(()=>document.querySelector("#tutorial-skip")?.hidden===false);
+    await page.reload({waitUntil:"networkidle"});
+    await page.locator("#tutorial-skip").waitFor({state:"visible"});
     assert.ok((await page.locator("#power-note").textContent()).includes("All placed machines are connected."));
     assert.match(await page.locator("#mission-description").textContent(),/Wait for connected MINE production/,
       "a ready region does not imply LIFE is consuming fuel while it earns scrap");
