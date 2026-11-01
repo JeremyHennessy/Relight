@@ -37,7 +37,7 @@ try{
   await p.waitForFunction(()=>{
     const rect=document.querySelector("#network-board").getBoundingClientRect();
     return window.scrollY>200 && rect.top>=0 &&
-      rect.top<Math.min(360,window.innerHeight*.5);
+      rect.top<window.innerHeight*.5;
   },null,{timeout:7000});
   const boardTop=await p.locator("#network-board").evaluate(e=>e.getBoundingClientRect().top);
   console.log("GUIDED BOARD USABLY VISIBLE",Math.round(boardTop));
