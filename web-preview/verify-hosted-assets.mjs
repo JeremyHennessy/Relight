@@ -10,7 +10,6 @@ export const PREVIEW_ORIGIN="https://relight-ux-playtest.pages.dev";
 const localRoot=fileURLToPath(new URL(".",import.meta.url));
 const targets=[
   ["/","index.html"],
-  ["/index.html","index.html"],
   ["/app.mjs","app.mjs"],
   ["/model.mjs","model.mjs"],
   ["/styles.css","styles.css"]

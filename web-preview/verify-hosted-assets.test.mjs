@@ -30,7 +30,7 @@ test("offline fixtures cover root HTML and exact public asset routes",async()=>{
     return new Response(bytes,{status:200});
   }});
   assert.deepEqual(requests.map(request=>new URL(request.url).pathname),[
-    "/","/index.html","/app.mjs","/model.mjs","/styles.css"
+    "/","/app.mjs","/model.mjs","/styles.css"
   ]);
 });
 

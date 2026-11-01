@@ -5,6 +5,8 @@ on:
       - feat/relight-first-play-ux-v2
     paths:
       - .github/workflows/relight-public-playtest-smoke.yml
+      - web-preview/verify-hosted-assets.mjs
+      - web-preview/verify-hosted-assets.test.mjs
   workflow_dispatch:
 
 permissions:
@@ -12,9 +14,9 @@ permissions:
 
 jobs:
   live-website:
-    # This branch push is a workflow-only verification change made after the
-    # exact production assets were deployed. This job verifies public assets
-    # and browser behavior; it has no deployment step or write permissions.
+    # Run only on the approved feature branch after its production assets were
+    # deployed. This job verifies public assets and browser behavior; it has no
+    # deployment step or write permissions.
     if: ${{ github.ref == 'refs/heads/feat/relight-first-play-ux-v2' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     name: Verify published game is available and genuinely playable
     runs-on: ubuntu-latest
