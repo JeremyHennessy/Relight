@@ -25,8 +25,8 @@
   <section class="world-section" aria-label="Planet status">
     <div class="world-intro">
       <div class="eyebrow"><span class="eyebrow-dot"></span> MISSION CONTROL <span class="thin-sep">/</span> <span id="sector">SECTOR 01</span></div>
-      <h1>Every world<br>deserves <em>another dawn.</em></h1>
-      <p class="intro-copy">The planet has gone quiet. Restore its energy network, power the machines and watch life return—one region at a time.</p>
+      <h1 id="world-title">Every world<br>deserves <em>another dawn.</em></h1>
+      <p class="intro-copy" id="world-copy">The planet has gone quiet. Restore its energy network, power the machines and watch life return—one region at a time.</p>
       <div class="resource-grid" aria-label="Your current resources">
         <div class="resource">
           <span class="resource-label">SALVAGED SCRAP <span class="resource-icon scrap-ico">⬡</span></span>
@@ -53,14 +53,14 @@
 
   <section class="mission-banner" aria-label="Current guided objective">
     <div class="mission-number"><span>FIELD<br>DIRECTIVE</span><strong id="mission-number">01</strong></div>
-    <div class="mission-copy"><div class="eyebrow mission-eyebrow" id="mission-eyebrow">YOUR NEXT MOVE</div><h2 id="mission-title" aria-live="polite" aria-atomic="true">Give the life engine a boost.</h2><p id="mission-description">The starter network is live. Select <b>POWER</b> below, then tap the glowing tile beside the green LIFE machine.</p><p id="tutorial-why" class="tutorial-why" hidden></p></div>
+    <div class="mission-copy"><div class="eyebrow mission-eyebrow" id="mission-eyebrow">YOUR NEXT MOVE</div><h2 id="mission-title" tabindex="-1" aria-live="polite" aria-atomic="true">Give the life engine a boost.</h2><p id="mission-description">The starter network is live. Select <b>POWER</b> below, then tap the glowing tile beside the green LIFE machine.</p><button id="campaign-action" class="campaign-action" type="button" hidden></button><span id="campaign-wallet" class="campaign-wallet" hidden></span><p id="tutorial-why" class="tutorial-why" hidden></p></div>
     <div class="mission-progress" id="mission-stages" aria-label="Walkthrough progress"><span></span><span></span><span></span><span></span><span></span></div>
   </section>
 
   <section class="workshop" aria-label="Network construction and upgrades">
     <div class="network-card">
       <div class="section-heading">
-        <div><div class="eyebrow">THE GRID <span class="thin-sep">/</span> NETWORK 5×5</div><h2>Build the connection.</h2></div>
+        <div><div class="eyebrow" id="network-eyebrow">THE GRID <span class="thin-sep">/</span> NETWORK 5×5</div><h2 id="network-board-title">Build the connection.</h2></div>
         <div class="network-key"><span class="key-on"></span> ACTIVE <span class="key-off"></span> OFFLINE <span class="key-fuel">FUEL</span> STARVED <span class="key-limited">LIMIT</span> FUEL <span class="key-throttle">LOW</span> POWER</div>
       </div>
       <div class="mobile-feedback" id="mobile-feedback" role="status" aria-live="polite">POWER selected · tap the glowing NEXT tile</div>

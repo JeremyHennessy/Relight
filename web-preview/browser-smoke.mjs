@@ -1,232 +1,162 @@
-// Runs in GitHub Actions against a real headless Chromium browser.
-// Screenshots are produced for actual layout review, not treated as user approval.
+// Hosted/local Chromium smoke for the staged First Light campaign.
+// Screenshots are inspection artifacts; they do not stand in for player tests.
 import assert from "node:assert/strict";
 import {chromium} from "playwright";
+
 const origin=process.env.RELIGHT_BROWSER_URL||"http://127.0.0.1:8765";
 const executablePath=process.env.RELIGHT_CHROMIUM_EXECUTABLE_PATH||undefined;
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"],executablePath});
 const errors=[];
 async function isolateRemoteFonts(context){
   if(!["127.0.0.1","localhost"].includes(new URL(origin).hostname))return;
-  // The source preview imports Google Fonts. Serve an empty stylesheet in
-  // local-only checks so tests stay offline and exercise the system fallbacks.
   await context.route("https://fonts.googleapis.com/**",route=>
     route.fulfill({status:200,contentType:"text/css",body:""}));
 }
+async function assertNoOverflow(page,width){
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);
+  assert.ok(overflow<=2,`${width}px page has horizontal overflow: ${overflow}px`);
+}
+async function freshContext(width,height){
+  const context=await browser.newContext({viewport:{width,height},deviceScaleFactor:1,
+    isMobile:width<=650,hasTouch:width<=650});
+  await isolateRemoteFonts(context);
+  const page=await context.newPage();
+  page.on("pageerror",error=>errors.push(error.message));
+  page.on("console",message=>{if(message.type()==="error")errors.push(message.text());});
+  await page.goto(origin,{waitUntil:"networkidle"});
+  return {context,page};
+}
+
 try{
-  const mobile=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true});
-  await isolateRemoteFonts(mobile);
-  const p=await mobile.newPage();
-  p.on("pageerror",err=>errors.push(err.message));
-  p.on("console",msg=>{if(msg.type()==="error")errors.push(msg.text());});
-  await p.goto(origin,{waitUntil:"networkidle"});
-  assert.equal(await p.locator(".tile").count(),25,"5x5 grid rendered");
-  assert.equal(await p.locator("#welcome").evaluate(e=>e.open),true,"first-launch tutorial appears");
-  assert.equal(await p.locator(".network-card #recovery-progress").count(),1,
-    "the recovery meter sits inside the grid card");
-  assert.equal(await p.locator(".network-card #revive").count(),1,
-    "the contextual awaken action shares the grid card");
-  assert.match(await p.locator("#region-state").textContent(),/active to awaken/,
-    "a new player sees an estimated active-play time to the first region");
-  await p.screenshot({path:"relight-mobile-onboarding.png",fullPage:true,animations:"disabled"});
-  const geometry=await p.evaluate(()=>{
-    const b=document.querySelector("#begin").getBoundingClientRect();
-    const d=document.querySelector("#welcome").getBoundingClientRect();
-    const hit=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);
-    return {viewport:[innerWidth,innerHeight],scroll:[document.documentElement.scrollWidth,document.documentElement.scrollHeight],button:[b.left,b.top,b.width,b.height],dialog:[d.left,d.top,d.width,d.height],hit:hit?.id||hit?.tagName,dialogCSS:getComputedStyle(document.querySelector("#welcome")).position};
-  });
-  console.log("ONBOARDING GEOMETRY",JSON.stringify(geometry));
-  await p.locator("#begin").click({timeout:4000});
-  await p.locator("#tutorial-skip").click();
-  assert.equal(await p.locator("#welcome").evaluate(e=>e.open),false,"walkthrough can be skipped for free play");
-  await p.locator("#mobile-feedback").evaluate(e=>{e.scrollIntoView({behavior:"instant",block:"start"});window.scrollBy(0,-1);});
-  // Wait for the smooth scroll to put a usable part of the board into
-  // view, not merely its first pixel at the bottom of the phone viewport.
-  await p.waitForFunction(()=>{
-    const rect=document.querySelector("#network-board").getBoundingClientRect();
-    return window.scrollY>200 && rect.top>=0 &&
-      rect.top<window.innerHeight*.5;
-  },null,{timeout:7000});
-  const boardTop=await p.locator("#network-board").evaluate(e=>e.getBoundingClientRect().top);
-  console.log("GUIDED BOARD USABLY VISIBLE",Math.round(boardTop));
-  assert.match(await p.locator("#mission-title").textContent(),/life engine/i);
-  assert.equal(await p.locator(".quick-tool").count(),5,"compact mobile machine controls");
-  assert.equal(await p.locator('.quick-tool[data-machine="5"]').getAttribute("aria-pressed"),"true");
-  assert.equal(await p.locator(".quick-tool").first().isVisible(),true,
-    "machine controls must appear beside mobile board");
-  const quickTarget=await p.locator(".quick-tool").first().boundingBox();
-  assert.ok(quickTarget.width>=44&&quickTarget.height>=44,
-    "mobile machine selector must be easy to tap");
-  await p.locator('.quick-tool[data-machine="2"]').click();
-  assert.equal(await p.locator('.tool[data-machine="2"]').getAttribute("aria-pressed"),"true",
-    "compact selector updates full construction palette");
-  await p.locator('.quick-tool[data-machine="5"]').click();
-  assert.equal(await p.locator('.tool[data-machine="5"]').getAttribute("aria-pressed"),"true");
-  assert.match(await p.locator("#selected-tool-text").textContent(),/glowing NEXT tile/);
-  assert.match(await p.locator('[data-index="19"]').getAttribute("class"),/suggested/);
-  await p.locator('[data-index="19"]').click();
-  await p.waitForFunction(()=>document.querySelector("#mission-title")?.textContent.includes("scrap miner"));
-  assert.match(await p.locator("#mission-description").textContent(),/MINE is already selected for you/,
-    "guided mission instructions reflect the actual automatically selected tool");
-  assert.match(await p.locator("#region-state").textContent(),/active to awaken/,
-    "the first-play build loop keeps its active-play estimate visible");
-  assert.equal(await p.locator("#toast").isVisible(),false,
-    "floating toast is disabled on mobile");
-  assert.equal(await p.locator("#mobile-feedback").isVisible(),true,
-    "phone construction feedback is visible beside the tools");
-  assert.match(await p.locator("#mobile-feedback").textContent(),/Structure built/,
-    "successful construction is acknowledged inline");
-  const phoneFeedback=await p.locator("#mobile-feedback").boundingBox();
-  const phoneBoard=await p.locator("#network-board").boundingBox();
-  const phoneMission=await p.locator(".mission-banner").boundingBox();
-  assert.ok(phoneFeedback && phoneBoard && phoneMission &&
-    phoneFeedback.y >= phoneMission.y+phoneMission.height-2 &&
-    phoneFeedback.y+phoneFeedback.height < phoneBoard.y,
-    "phone feedback occupies its reserved space between mission and grid without covering either");
-  assert.equal(await p.locator('.quick-tool[data-machine="3"]').getAttribute("aria-pressed"),"true",
-    "next guided machine auto-selects on compact palette");
-  assert.match(await p.locator('[data-index="7"]').getAttribute("class"),/suggested/);
-  await p.locator('[data-index="7"]').click();
-  await p.waitForFunction(()=>document.querySelector("#mission-title")?.textContent.includes("world wake up"));
-  assert.doesNotMatch(await p.locator("#selected-tool-text").textContent(),/glowing NEXT tile/,
-    "no nonexistent NEXT tile after the tutorial construction steps");
-  const saved=await p.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")));
-  assert.equal(saved.cells[19],5);assert.equal(saved.cells[7],3);
-  assert.ok(saved.scrap>=3&&saved.scrap<10,"two purchases persisted; live mining may earn fractional scrap");
-  await p.locator("#how-to-play").click();assert.equal(await p.locator("#welcome").evaluate(e=>e.open),true);
-  await p.locator("#dismiss-help").click();
-  const overflow=await p.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
-  assert.ok(overflow<=2,"mobile page has horizontal overflow: "+overflow);
-  await p.screenshot({path:"relight-mobile-playtest.png",fullPage:true,animations:"disabled"});
-  await p.reload({waitUntil:"networkidle"});
-  assert.match(await p.locator("#mission-title").textContent(),/world wake up/i,"save survives reload");
-  assert.equal(await p.locator("#welcome").evaluate(e=>e.open),false,"guide dismissed persists");
-  assert.equal(await p.locator('[data-index="19"]').locator(".tile-name").textContent(),"POWER");
+  const {context:mobile,page}=await freshContext(390,844);
+  assert.equal(await page.locator("#welcome").evaluate(dialog=>dialog.open),false,
+    "a new save starts in the playable opening, without a feature-list modal");
+  assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),true);
+  assert.equal(await page.locator(".tile:visible").count(),3,
+    "the initial space shows only reactor, broken relay and greenhouse");
+  assert.equal(await page.locator(".tile:enabled").count(),1,"only the broken relay site is actionable");
+  assert.equal(await page.locator(".sidebar").isVisible(),false,"future machines and upgrades stay out of the opening");
+  assert.equal(await page.locator(".resource-grid").isVisible(),false,"the opening has no resource dashboard");
+  assert.match(await page.locator("#mission-title").textContent(),/greenhouse/i);
+  assert.match(await page.locator("#campaign-action").textContent(),/REPAIR RELAY/);
+  assert.match(await page.locator('[data-index="12"]').getAttribute("aria-label"),/CORE/i,
+    "occupied reactor keeps its machine name in its accessible label");
+  assert.match(await page.locator('[data-index="14"]').getAttribute("aria-label"),/LIFE/i,
+    "occupied greenhouse keeps its machine name in its accessible label");
+  assert.match(await page.locator('[data-index="13"]').evaluate(el=>getComputedStyle(el,"::after").content),/REPAIR/,
+    "broken-link target badge names the repair action");
+  for(const selector of ["#campaign-action","#region-state",'[data-index="12"]','[data-index="13"]','[data-index="14"]']){
+    const box=await page.locator(selector).boundingBox();
+    assert.ok(box&&box.y>=0&&box.y+box.height<=844,
+      `390×844 opening keeps ${selector} visible without scrolling`);
+  }
+  assert.doesNotMatch(await page.locator("#selected-tool-text").textContent(),/POWER|NEXT/i,
+    "repair stage does not inherit the sandbox POWER/NEXT hint");
+  assert.equal(await page.locator(".board-foot").isVisible(),false,
+    "campaign stages hide the irrelevant sandbox selection footer");
+  await assertNoOverflow(page,390);
+  await page.screenshot({path:"relight-firstlight-390-opening.png",fullPage:true,animations:"disabled"});
+  await page.screenshot({path:"relight-firstlight-390-viewport.png",fullPage:false,animations:"disabled"});
 
-  // Confirm the UI actually renders an evolving planet and a claimable
-  // milestone. Seed only the persisted restore meter to avoid a 2-minute
-  // wall-clock test; run the final completion and revival through the UI.
-  const planetBefore=await p.locator("#planet").evaluate(e=>e.toDataURL());
-  // A normal reload fires the game's pagehide save handler, so writing to
-  // localStorage *before* reloading is immediately overwritten. Inject once
-  // at document startup, ahead of the app module, to simulate a legitimate
-  // nearly-completed saved region without weakening real persistence.
-  await p.addInitScript(()=>{
-    const marker="relight.browser-test.seeded-once";
+  await page.locator('[data-index="13"]').click();
+  assert.match(await page.locator("#mission-title").textContent(),/greenhouse is waking/i);
+  assert.match(await page.locator("#world-copy").textContent(),/relay is repaired/i);
+  assert.doesNotMatch(await page.locator("#world-copy").textContent(),/relay.*broken/i);
+  assert.equal(await page.locator("[data-index='13'] .tile-name").textContent(),"RELAY");
+  await page.waitForFunction(()=>document.querySelector("#campaign-action")?.textContent.includes("EARNED MINE"),null,{timeout:15000});
+  assert.equal(await page.locator(".tile:visible").count(),6,"the earned-kit milestone reveals one small expansion");
+  assert.match(await page.locator("#world-copy").textContent(),/greenhouse is recovering/i);
+  assert.doesNotMatch(await page.locator("#world-copy").textContent(),/relay.*broken/i);
+  assert.match(await page.locator('[data-index="17"]').evaluate(el=>getComputedStyle(el,"::after").content),/MINE/,
+    "earned-kit target badge introduces the MINE action");
+  await page.screenshot({path:"relight-firstlight-390-kit.png",fullPage:true,animations:"disabled"});
+  await page.screenshot({path:"relight-firstlight-390-kit-viewport.png",fullPage:false,animations:"disabled"});
+  await page.locator("#campaign-action").click();
+  assert.equal(await page.locator("[data-index='17'] .tile-name").textContent(),"MINE");
+  assert.equal(await page.locator("#revive").isVisible(),false,"first awakening waits for real region progress");
+
+  // Seed a nearly complete, valid first-region state once to keep the smoke
+  // bounded; the real actions (claim, expansion MINE, POWER) still use UI/model.
+  await page.addInitScript(()=>{
+    const marker="relight.smoke.seeded-first-region";
     if(sessionStorage.getItem(marker))return;
-    const key="relight.webplaytest.v1";
-    const snapshot=JSON.parse(localStorage.getItem(key)||"null");
-    if(!snapshot || snapshot.cells?.[19]!==5 || snapshot.cells?.[7]!==3)return;
-    snapshot.restoration=99.8;
-    snapshot.savedAt=Math.floor(Date.now()/1000);
-    localStorage.setItem(key,JSON.stringify(snapshot));
-    sessionStorage.setItem(marker,"yes");
+    const key="relight.webplaytest.v1",saved=JSON.parse(localStorage.getItem(key)||"null");
+    if(saved?.campaign?.phase!=="first-region")return;
+    saved.restoration=99.8;saved.savedAt=Math.floor(Date.now()/1000);
+    localStorage.setItem(key,JSON.stringify(saved));sessionStorage.setItem(marker,"yes");
   });
-  await p.reload({waitUntil:"networkidle"});
-  await p.waitForFunction(()=>!document.querySelector("#revive").disabled&&!document.querySelector("#revive").hidden,
-    null,{timeout:10000});
-  assert.match(await p.locator("#selected-tool-text").textContent(),/tap AWAKEN REGION here/,
-    "when region is ready the guide prioritizes the revival action");
-  assert.match(await p.locator("#mission-description").textContent(),/button by the grid/);
-  const recoveryBox=await p.locator(".board-recovery").boundingBox();
-  const readyBoardBox=await p.locator("#network-board").boundingBox();
-  assert.ok(recoveryBox&&readyBoardBox&&recoveryBox.y+recoveryBox.height<=readyBoardBox.y,
-    "ready recovery action stays above, and does not overlap, its board");
-  assert.equal(await p.locator("#restored-percent").textContent(),"100%");
-  const planetAtReady=await p.locator("#planet").evaluate(e=>e.toDataURL());
-  const planetNameAtReady=await p.locator("#planet-name").textContent();
-  assert.notEqual(planetAtReady,planetBefore,
-    "recovered planet texture should visibly differ from barren planet");
-  await p.screenshot({path:"relight-mobile-awakening-ready.png",fullPage:true,animations:"disabled"});
-  await p.locator("#revive").click();
-  const awakened=await p.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")));
-  assert.equal(awakened.region,1,"reviving a region advances exactly one milestone");
-  assert.equal(awakened.restoration,0,"next region begins from zero restoration");
-  assert.match(await p.locator("#sector").textContent(),/SECTOR 02/);
-  assert.equal(await p.locator("#planet-name").textContent(),planetNameAtReady,
-    "first region revival should preserve the current planet identity");
-  assert.equal(await p.locator("#planet").evaluate(e=>e.toDataURL()),planetAtReady,
-    "first revival should preserve accumulated planet restoration, not reset to barren");
-  await p.screenshot({path:"relight-mobile-awakened.png",fullPage:true,animations:"disabled"});
-  await p.reload({waitUntil:"networkidle"});
-  assert.match(await p.locator("#sector").textContent(),/SECTOR 02/,
-    "region advancement is preserved across reload");
-  assert.equal(await p.locator("#revive").isVisible(),false,
-    "the contextual action hides again until the next region is ready");
-  assert.match(await p.locator("#region-state").textContent(),/active to awaken/,
-    "the next region starts with a new active-play estimate after reload");
-  await mobile.close();
+  await page.reload({waitUntil:"networkidle"});
+  assert.equal(await page.locator("#revive").isVisible(),true,"a region claim becomes available at its actual target");
+  const recovery=await page.locator(".board-recovery").boundingBox();
+  const board=await page.locator("#network-board").boundingBox();
+  assert.ok(recovery&&board&&recovery.y+recovery.height<=board.y,"recovery status and claim do not overlap the board");
+  await page.screenshot({path:"relight-firstlight-390-ready.png",fullPage:true,animations:"disabled"});
+  await page.screenshot({path:"relight-firstlight-390-ready-viewport.png",fullPage:false,animations:"disabled"});
+  const planetAtReady=await page.locator("#planet").evaluate(el=>el.toDataURL());
+  const planetNameAtReady=await page.locator("#planet-name").textContent();
+  await page.locator("#revive").click();
+  let saved=await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")));
+  assert.equal(saved.region,1);assert.equal(saved.campaign.phase,"expansion");
+  assert.match(await page.locator("#world-copy").textContent(),/region is awake/i);
+  assert.doesNotMatch(await page.locator("#world-copy").textContent(),/relay.*broken/i);
+  assert.equal(await page.locator("#planet").evaluate(el=>el.toDataURL()),planetAtReady,
+    "first awakening preserves the earned restoration pixels");
+  assert.equal(await page.locator("#planet-name").textContent(),planetNameAtReady);
+  assert.match(await page.locator('[data-index="7"]').evaluate(el=>getComputedStyle(el,"::after").content),/MINE/,
+    "new-frontier target badge names the MINE action");
+  await page.screenshot({path:"relight-firstlight-390-awakened.png",fullPage:true,animations:"disabled"});
+  await page.locator("#campaign-action").click();
+  saved=await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")));
+  assert.equal(saved.campaign.phase,"power");
+  assert.match(await page.locator("#world-copy").textContent(),/strain the reactor/i);
+  assert.doesNotMatch(await page.locator("#world-copy").textContent(),/relay.*broken/i);
+  assert.match(await page.locator('[data-index="9"]').evaluate(el=>getComputedStyle(el,"::after").content),/POWER/,
+    "overload target badge names the POWER action");
+  assert.equal(await page.locator("#planet").evaluate(el=>el.toDataURL()),planetAtReady,
+    "POWER installation keeps the first region's restoration pixels");
+  assert.match(await page.locator("#mission-title").textContent(),/reactor is strained/i);
+  await page.locator("#campaign-action").click();
+  saved=await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")));
+  assert.equal(saved.campaign.phase,"open");
+  assert.equal(await page.locator(".tile:visible").count(),25,"the full grid opens only after POWER placement");
+  assert.match(await page.locator("#world-copy").textContent(),/planet has gone quiet/i,
+    "the restored sandbox receives normal world copy after opening completion");
+  assert.doesNotMatch(await page.locator("#world-copy").textContent(),/relay.*broken/i);
+  await page.reload({waitUntil:"networkidle"});
+  assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),false,
+    "the first POWER unlock persists across reload");
+  assert.equal(await page.locator("#planet").evaluate(el=>el.toDataURL()),planetAtReady,
+    "reloaded open campaign keeps the earned restoration pixels");
+  assert.match(await page.locator("#world-title").textContent(),/another dawn/i,
+    "normal world headline remains after POWER and reload");
+  assert.match(await page.locator("#world-copy").textContent(),/planet has gone quiet/i);
+  await assertNoOverflow(page,390);
+  await page.close();await mobile.close();
 
-  // Smaller Android handsets must still expose five usable one-thumb build
-  // controls and a clickable tutorial without horizontal overflow.
-  const narrow=await browser.newContext({
-    viewport:{width:320,height:640},deviceScaleFactor:1,isMobile:true,hasTouch:true
-  });
-  await isolateRemoteFonts(narrow);
-  const small=await narrow.newPage();
-  small.on("pageerror",err=>errors.push(err.message));
-  small.on("console",msg=>{if(msg.type()==="error")errors.push(msg.text());});
-  await small.goto(origin,{waitUntil:"networkidle"});
-  assert.equal(await small.locator("#welcome").evaluate(e=>e.open),true);
-  await small.locator("#begin").click({timeout:6000});
-  await small.locator("#tutorial-skip").click();
-  await small.locator("#mobile-feedback").evaluate(e=>{e.scrollIntoView({behavior:"instant",block:"start"});window.scrollBy(0,-1);});
-  await small.waitForFunction(()=>{
-    const instructions=document.querySelector("#mobile-feedback").getBoundingClientRect();
-    const recovery=document.querySelector(".board-recovery").getBoundingClientRect();
-    const board=document.querySelector("#network-board").getBoundingClientRect();
-    return scrollY>100&&instructions.top>=0&&instructions.bottom<=recovery.top&&
-      recovery.top>=0&&recovery.bottom<=board.top&&
-      board.top>=0&&board.bottom<=innerHeight;
-  },null,{timeout:7000});
-  assert.match(await small.locator("#mobile-feedback").textContent(),/glowing NEXT tile/,
-    "first-play guidance remains beside the board after scrolling");
-  assert.equal(await small.locator(".tile.suggested").isVisible(),true,
-    "the highlighted NEXT tile is visible with the local recovery panel on a 320px phone");
-  assert.equal(await small.locator(".quick-tool").first().isVisible(),true,
-    "the first-play machine controls remain usable alongside the board");
-  const narrowTool=await small.locator('.quick-tool[data-machine="5"]').boundingBox();
-  assert.ok(narrowTool.width>=44&&narrowTool.height>=44,
-    "320px handset tool buttons must stay touch-friendly");
-  assert.ok((await small.evaluate(()=>document.documentElement.scrollWidth))<=320,
-    "320px handset has no horizontal overflow");
-  await small.locator('.quick-tool[data-machine="5"]').click();
-  await small.locator('[data-index="19"]').click();
-  assert.match(await small.locator("#mission-title").textContent(),/scrap miner/i);
-  assert.match(await small.locator("#mission-description").textContent(),/MINE is already selected for you/);
-  await small.locator('.quick-tool[data-machine="3"]').click();
-  assert.equal(await small.locator("#toast").isVisible(),false,
-    "floating notifications are not drawn over narrow phone screens");
-  await small.waitForFunction(()=>
-    document.querySelector("#mobile-feedback")?.textContent.includes("MINE selected"),
-    null,{timeout:3000});
-  assert.match(await small.locator("#mobile-feedback").textContent(),/glowing NEXT tile/,
-    "mobile tool feedback agrees with the current guided target");
-  const feedbackBox=await small.locator("#mobile-feedback").boundingBox();
-  const boardBox=await small.locator("#network-board").boundingBox();
-  console.log("NARROW INLINE FEEDBACK",JSON.stringify({feedback:feedbackBox,board:boardBox}));
-  assert.ok(feedbackBox && boardBox && feedbackBox.y+feedbackBox.height<boardBox.y,
-    "reserved mobile feedback must be above and not overlap the construction grid");
-  await small.screenshot({path:"relight-narrow-320-playtest.png",fullPage:true,animations:"disabled"});
+  const {context:narrow,page:small}=await freshContext(320,640);
+  assert.equal(await small.locator(".tile:visible").count(),3);
+  for(const selector of ["#campaign-action","#region-state",'[data-index="12"]','[data-index="13"]','[data-index="14"]']){
+    const box=await small.locator(selector).boundingBox();
+    assert.ok(box&&box.y>=0&&box.y+box.height<=640,
+      `320×640 opening keeps ${selector} visible without scrolling`);
+  }
+  await small.screenshot({path:"relight-firstlight-320-viewport.png",fullPage:false,animations:"disabled"});
+  await small.locator('[data-index="13"]').evaluate(el=>el.scrollIntoView({behavior:"instant",block:"center"}));
+  const target=await small.locator('[data-index="13"]').boundingBox();
+  assert.ok(target&&target.y>=0&&target.y+target.height<=640,
+    "the highlighted repair target fits the real 320×640 viewport after focusing it");
+  assert.ok(target.width>=44&&target.height>=44,"the relay target is touch sized");
+  await assertNoOverflow(small,320);
+  await small.screenshot({path:"relight-firstlight-320-opening.png",fullPage:true,animations:"disabled"});
   await narrow.close();
 
-  const desktop=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
-  await isolateRemoteFonts(desktop);
-  const d=await desktop.newPage();
-  d.on("pageerror",err=>errors.push(err.message));
-  d.on("console",msg=>{if(msg.type()==="error")errors.push(msg.text());});
-  await d.goto(origin,{waitUntil:"networkidle"});
-  assert.equal(await d.locator(".quick-tool").first().isVisible(),false,
-    "desktop layout continues using full detailed tool descriptions");
-  assert.equal(await d.locator("#mobile-feedback").isVisible(),false,
-    "desktop keeps normal transient feedback instead of mobile reserved line");
-  await d.locator("#begin").click();
-  await d.locator("#tutorial-skip").click();
-  const desktopOverflow=await d.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
-  assert.ok(desktopOverflow<=2,"desktop page has horizontal overflow: "+desktopOverflow);
-  await d.screenshot({path:"relight-desktop-playtest.png",fullPage:true,animations:"disabled"});
+  const {context:desktop,page:d}=await freshContext(1440,900);
+  assert.equal(await d.locator(".tile:visible").count(),3);
+  assert.equal(await d.locator(".sidebar").isVisible(),false);
+  await assertNoOverflow(d,1440);
+  await d.screenshot({path:"relight-firstlight-desktop-opening.png",fullPage:true,animations:"disabled"});
+  await d.screenshot({path:"relight-firstlight-desktop-viewport.png",fullPage:false,animations:"disabled"});
   await desktop.close();
-  assert.deepEqual(errors,[],"No browser page errors or console errors");
-  console.log("PASS: Chrome mobile+desktop render, tutorial steps, build clicks, save reload, no overflow, screenshots");
-}
-finally{await browser.close();}
+  assert.deepEqual(errors,[],"Chromium reports no page or console errors");
+  console.log("PASS: staged opening, earned kit, region claim, earned POWER, 320/390/1440 layouts and screenshots");
+}finally{await browser.close();}

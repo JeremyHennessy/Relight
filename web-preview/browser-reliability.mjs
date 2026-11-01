@@ -3,7 +3,7 @@
 // reconstructed or claimed to be identical.
 import assert from "node:assert/strict";
 import {chromium} from "playwright";
-import {fresh,Machine,MAX_OFFLINE,MINING_OFFLINE,advance,rates,estimateRecoverySeconds} from "./model.mjs";
+import {fresh,freshCampaign,Machine,MAX_OFFLINE,MINING_OFFLINE,advance,rates,estimateRecoverySeconds} from "./model.mjs";
 
 const origin=process.env.RELIGHT_BROWSER_URL||"http://127.0.0.1:8765";
 const saveKey="relight.webplaytest.v1";
@@ -30,7 +30,8 @@ function readableEta(seconds){
   return hours+"h"+(remainingMinutes?" "+remainingMinutes+"m":"");
 }
 
-async function withPage({width=390,height=844,initial={},config={}},run){
+async function withPage({width=390,height=844,initial,config={}},run){
+  const initialValues=initial===undefined?{[saveKey]:savedWorld()}:initial;
   const context=await browser.newContext({
     viewport:{width,height},deviceScaleFactor:1,
     isMobile:width<=650,hasTouch:width<=650
@@ -110,7 +111,7 @@ async function withPage({width=390,height=844,initial={},config={}},run){
         const callback=queuedFrame;queuedFrame=null;frameTime+=1000;callback(frameTime);return true;
       }
     };
-  },{initial,config});
+  },{initial:initialValues,config});
   try{
     await page.goto(origin,{waitUntil:"networkidle"});
     assert.equal(await page.locator(".tile").count(),25,"playable board renders");
@@ -163,6 +164,22 @@ async function runAutosaveTicks(page,count=40){
   assert.ok(ran>=count-1,`only ${ran}/${count} animation frames ran`);
 }
 async function buildGuidedNetwork(page){
+  if(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening"))){
+    const isolatedPractice=await page.locator("#tutorial-return").isVisible();
+    await page.locator("#campaign-action").click();
+    await runAutosaveTicks(page,48);
+    if(isolatedPractice){
+      assert.match(await page.locator("#campaign-action").textContent(),/EARNED MINE/,
+        "practice restoration earns the starter kit in its isolated in-memory world");
+    }else{
+      assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")))).campaign.phase,"mine-kit",
+        "restoration earns and saves the starter kit");
+    }
+    await page.locator("#campaign-action").click();
+    await runAutosaveTicks(page,600);
+    await page.locator("#revive").waitFor({state:"visible"});
+    return;
+  }
   await build(page,Machine.Generator,19);
   await build(page,Machine.Extractor,7);
   await runAutosaveTicks(page,40);
@@ -170,6 +187,14 @@ async function buildGuidedNetwork(page){
   await runAutosaveTicks(page,40);
   await build(page,Machine.Restorer,9);
   await runAutosaveTicks(page,280);
+}
+async function unlockCampaignPower(page){
+  if(!await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")))return;
+  await page.locator("#campaign-action").click();
+  assert.match(await page.locator("#mission-title").textContent(),/reactor is strained/);
+  await page.locator("#campaign-action").click();
+  assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),false,
+    "the full sandbox opens only after the actual POWER placement");
 }
 async function check(name,fn){
   await fn();passed++;console.log("PASS browser reliability:",name);
@@ -427,7 +452,9 @@ try{
       "ready-world mining is reported as positive income despite LIFE demand");
   }));
 
-  await check("skip and reopening the guide leave the live world unchanged",()=>withPage({},async page=>{
+  await check("legacy walkthrough skip and reopening leave the world unchanged",()=>withPage({initial:{
+    [saveKey]:savedWorld(),[tutorialKey]:JSON.stringify({active:true,complete:false,mode:"live",initialRegion:0})
+  }},async page=>{
     await page.locator("#begin").click();
     const saved=await raw(page);
     const before=JSON.parse(saved);
@@ -474,7 +501,8 @@ try{
   });
 
   await check("guided live regions stay quiet on stable ticks and announce one stage change",()=>withPage({
-    width:390,height:844,initial:{[saveKey]:savedWorld(),[firstKey]:"yes"}
+    width:390,height:844,initial:{[saveKey]:savedWorld(),[firstKey]:"yes",
+      [tutorialKey]:JSON.stringify({active:true,complete:false,mode:"live",initialRegion:0})}
   },async page=>{
     await page.locator("#how-to-play").click();
     await page.locator("#begin").click();
@@ -505,65 +533,87 @@ try{
     await page.evaluate(()=>window.__liveMutationObserver.disconnect());
   }));
 
-  await check("five real tutorial goals follow grid state through reload and one normal claim",()=>withPage({
-    width:320,height:640
+  await check("legacy region-zero saves remain fully open instead of entering the new campaign",()=>withPage({
+    initial:{[saveKey]:savedWorld({scrap:73,region:0}),[firstKey]:"yes"}
   },async page=>{
-    assert.equal(await page.locator("#welcome").evaluate(el=>el.open),true);
-    await page.locator("#begin").click();
-    assert.equal(await page.locator("#tutorial-why").isVisible(),true);
-    assert.match(await page.locator("#mission-title").textContent(),/Connect POWER/);
-    assert.match(await page.locator("#mobile-feedback").textContent(),/Walkthrough 1\/5.*boosts recovery and adds capacity/,
-      "the phone keeps the current goal and its reason beside the highlighted grid");
-    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.tutorial.v1")).active),true);
-    assert.equal(await page.locator('.quick-tool[data-machine="5"]').evaluate(el=>el.classList.contains("tutorial-highlight")),true);
-    const target=page.locator(".tile.tutorial-highlight").first();
-    assert.ok(await target.isVisible(),"a legal POWER tile is highlighted on the narrow viewport");
-    const targetBox=await target.boundingBox();
-    assert.ok(targetBox&&targetBox.y>=0&&targetBox.y+targetBox.height<=640,
-      "the current guided tile remains visible at 320×640");
-    const instructionBox=await page.locator("#mobile-feedback").boundingBox();
-    assert.ok(instructionBox&&instructionBox.y>=-1&&instructionBox.y+instructionBox.height<=641,
-      "the phone instruction remains visible with the highlighted tile at 320×640: "+JSON.stringify(instructionBox));
-    const untouched=JSON.parse(await raw(page));
-    await page.locator('.quick-tool[data-machine="3"]').click();
-    assert.match(await page.locator("#mission-title").textContent(),/Connect POWER/,
-      "selecting the wrong tool cannot fake stage completion");
-    assert.deepEqual(JSON.parse(await raw(page)).cells,untouched.cells,
-      "a tool selection alone does not alter the grid");
+    const saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign,undefined,"legacy schema is not rewritten with campaign locks");
+    assert.ok(saved.scrap>=73&&saved.scrap<74,"normal offline simulation may add fractional scrap during startup");
+    assert.equal(saved.region,0);
+    assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),false);
+    assert.equal(await page.locator(".tile:visible").count(),25);
+    assert.equal(await page.locator(".sidebar").isVisible(),true);
+    assert.equal(await page.locator('.tool[data-machine="5"]').isVisible(),true);
+  }));
 
-    await build(page,Machine.Generator,19);
-    assert.match(await page.locator("#mission-title").textContent(),/Grow the scrap supply/);
-    assert.match(await page.locator("#mobile-feedback").textContent(),/Walkthrough 2\/5/);
+  await check("unknown future campaign versions remain byte-protected",()=>{
+    const future=freshCampaign();future.campaign.version=2;
+    const original=JSON.stringify(future);
+    return withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
+      assert.equal(await raw(page),original,"startup does not normalize an unknown future campaign");
+      assert.match((await status(page)).text,/existing save can't be read/i);
+      await page.locator("#how-to-play").click();await page.locator("#begin").click();
+      await page.locator("#campaign-action").click();await runAutosaveTicks(page,48);await pagehide(page);
+      assert.equal(await raw(page),original,"volatile play and lifecycle writes keep the unknown save unchanged");
+    });
+  });
+
+  await check("first light is a staged, saved campaign with an earned MINE and contextual POWER unlock",()=>withPage({
+    width:320,height:640,initial:{}
+  },async page=>{
+    assert.equal(await page.locator("#welcome").evaluate(el=>el.open),false,"fresh opening begins in play, not a lesson modal");
+    assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),true);
+    assert.match(await page.locator("#mission-title").textContent(),/greenhouse/i);
+    assert.equal(await page.locator(".tile:visible").count(),3,"the first view contains only the reactor, broken link and greenhouse");
+    assert.equal(await page.locator(".sidebar").isVisible(),false);
+    assert.equal(await page.locator(".resource-grid").isVisible(),false);
+    assert.equal(await page.locator(".tile:enabled").count(),1,"only the repair tile accepts input");
+    let saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"repair");assert.equal(saved.scrap,10);
+    await page.locator('[data-index="13"]').click();
+    saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"restore");assert.equal(saved.cells[13],Machine.Relay);
     await page.reload({waitUntil:"networkidle"});
-    assert.match(await page.locator("#mission-title").textContent(),/Grow the scrap supply/,
-      "the live lesson resumes from saved model state after reload");
-    await buildGuidedNetwork(page);
-    assert.equal(await page.locator("#revive").isVisible(),true,
-      "AWAKEN appears only after actual recovery reaches its target");
-    assert.match(await page.locator("#mission-title").textContent(),/Awaken the ready region/);
-    assert.match(await page.locator("#power-note").textContent(),/4 connected consumers, usable capacity 4/,
-      "the second LIFE lesson exposes actual capacity demand");
-    await page.locator("#revive").focus();
-    await page.keyboard.press("Enter");
-    const claimed=JSON.parse(await raw(page));
-    assert.equal(claimed.region,1,"the tutorial ends with the ordinary one-region claim");
+    assert.match(await page.locator("#mission-title").textContent(),/greenhouse is waking/i,
+      "the repaired connection resumes from the saved campaign state");
+    await runAutosaveTicks(page,48);
+    saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"mine-kit","actual simulated restoration earns the one-time kit");
+    assert.ok(saved.scrap<1,"the kit can be earned after the ordinary scrap reserve is exhausted");
+    assert.equal(await page.locator(".tile:visible").count(),6,"the earned kit reveals the next small construction area");
+    await page.reload({waitUntil:"networkidle"});
+    assert.equal(JSON.parse(await raw(page)).campaign.mineKit,"earned","earned-kit milestone survives reload");
+    assert.match(await page.locator("#campaign-action").textContent(),/EARNED MINE/);
+    const scrapBeforeKit=JSON.parse(await raw(page)).scrap;
+    await page.locator('[data-index="17"]').click();
+    saved=JSON.parse(await raw(page));
+    assert.equal(saved.cells[17],Machine.Extractor);
+    assert.equal(saved.scrap,scrapBeforeKit,"redeeming the kit does not spend ordinary scrap");
+    assert.equal(saved.campaign.phase,"first-region");
+    assert.equal(await page.locator("#revive").isVisible(),false,"early region claim stays unavailable");
+    await runAutosaveTicks(page,600);
+    await page.locator("#revive").waitFor({state:"visible"});
+    await page.locator("#revive").focus();await page.keyboard.press("Enter");
+    saved=JSON.parse(await raw(page));
+    assert.equal(saved.region,1);assert.equal(saved.campaign.phase,"expansion");
     assert.match(await page.locator("#progress-recap").innerText(),/Claimed \+50\.0 scrap/);
-    assert.equal(await page.evaluate(()=>document.activeElement.id),"region-state",
-      "keyboard claim returns focus to recovery status");
+    assert.equal(await page.evaluate(()=>document.activeElement.id),"region-state","keyboard claim keeps focus on contextual status");
     await page.evaluate(()=>document.querySelector("#revive").dispatchEvent(new MouseEvent("click",{bubbles:true})));
-    assert.equal(JSON.parse(await raw(page)).region,1,"a hidden repeat cannot grant a second claim");
-    assert.equal(await page.locator("#tutorial-done").isVisible(),true);
-    await page.locator("#how-to-play").click();await page.locator("#begin").click();
-    assert.equal(await page.locator("#tutorial-return").isVisible(),true,
-      "completed walkthrough replay remains a separate practice session");
-    await page.locator("#tutorial-return").click();
-    assert.equal(await page.locator("#tutorial-done").isVisible(),true,
-      "return from practice restores the completed walkthrough state");
-    assert.equal(JSON.parse(await raw(page)).region,1,"practice replay cannot change the completed live region");
+    assert.equal(JSON.parse(await raw(page)).region,1,"a repeated claim cannot duplicate the reward");
     await page.reload({waitUntil:"networkidle"});
-    const completedReturnVisible=await page.locator("#tutorial-return").isVisible();
-    assert.equal(completedReturnVisible,false,
-      "completed live walkthrough does not restart after reload: "+JSON.stringify(await page.evaluate(()=>({tutorial:localStorage.getItem("relight.webplaytest.tutorial.v1"),returnHidden:document.querySelector("#tutorial-return").hidden,stage:document.querySelector("#mission-title").textContent}))));
+    assert.equal(JSON.parse(await raw(page)).campaign.phase,"expansion","the first claim and new site survive reload");
+    assert.equal(await page.locator(".tile:visible").count(),9);
+    await page.locator("#campaign-action").click();
+    saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"power");
+    assert.match(await page.locator("#mission-title").textContent(),/reactor is strained/i);
+    await page.locator("#campaign-action").click();
+    saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"open");
+    assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),false);
+    assert.equal(await page.locator(".tile:visible").count(),25,"the full sandbox appears after the actual POWER placement");
+    assert.equal(await page.locator(".sidebar").isVisible(),true);
+    await page.reload({waitUntil:"networkidle"});
+    assert.equal(JSON.parse(await raw(page)).campaign.phase,"open","POWER unlock is persisted after reload");
+    assert.equal(await page.locator(".sidebar").isVisible(),true);
   }));
 
   await check("practice replay isolates every world write and returns the real saved world",()=>withPage({
@@ -583,6 +633,7 @@ try{
     await buildGuidedNetwork(page);
     assert.equal(await page.locator("#revive").isVisible(),true);
     await page.locator("#revive").click();
+    await unlockCampaignPower(page);
     await page.locator("#upgrade-mining").click();
     await page.evaluate(()=>{window.confirm=()=>true;});
     await page.locator("#repair").click();
@@ -610,6 +661,10 @@ try{
     await page.keyboard.press("Enter");
     assert.equal(await page.evaluate(()=>document.activeElement.id),"how-to-play",
       "keyboard return restores focus outside the temporary practice world");
+    assert.match(await page.locator("#world-title").textContent(),/another dawn/i,
+      "returning to a legacy save restores its normal headline");
+    assert.match(await page.locator("#world-copy").textContent(),/planet has gone quiet/i,
+      "returning to a legacy save restores its normal description");
     const restored=JSON.parse(await raw(page));
     assert.equal(restored.region,2,"practice region claims never transfer");
     assert.equal(restored.scrap,77,"practice rewards and spending never transfer");
@@ -617,7 +672,7 @@ try{
       "practice construction and reset never alter the real grid");
 
     await page.locator("#how-to-play").click();await page.locator("#begin").click();
-    await build(page,Machine.Generator,19);
+    await page.locator("#campaign-action").click();
     await page.reload({waitUntil:"networkidle"});
     assert.equal(await page.locator("#tutorial-return").isVisible(),false,
       "reload exits temporary practice rather than restoring its separate state");
@@ -657,7 +712,7 @@ try{
     const corrupt="{not valid save bytes";
     await withPage({initial:{[saveKey]:corrupt,[firstKey]:"yes"}},async page=>{
       await page.locator("#how-to-play").click();await page.locator("#begin").click();
-      await build(page,Machine.Generator,19);
+      await page.locator("#campaign-action").click();
       await runAutosaveTicks(page,12);await hideAndNotify(page);await pagehide(page);
       assert.equal(await raw(page),corrupt,"practice lifecycle actions preserve unreadable SAVE bytes");
       await page.locator("#tutorial-return").click();
@@ -670,7 +725,7 @@ try{
     await withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
       await page.locator("#how-to-play").click();await page.locator("#begin").click();
       await page.evaluate(value=>window.__relightTest.setRaw("relight.webplaytest.v1",value),external);
-      await build(page,Machine.Generator,19);
+      await page.locator("#campaign-action").click();
       await runAutosaveTicks(page,12);await hideAndNotify(page);await pagehide(page);
       assert.equal(await raw(page),external,"practice cannot overwrite an external save change");
       await page.locator("#tutorial-return").click();

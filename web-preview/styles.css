@@ -103,3 +103,54 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
 .tile.tutorial-highlight{z-index:6!important}
 @media(prefers-reduced-motion:reduce){.tutorial-highlight{animation:none!important;transition:none!important}}
 @media(max-width:650px){.tutorial-controls{gap:5px}.tutorial-control{min-height:44px}.mission-banner{align-items:start}}
+
+/* First Light is a small playable opening; the full sandbox appears only
+   after its first real capacity problem has been solved. */
+.campaign-opening .resource-grid,.campaign-opening .sidebar,.campaign-opening .quick-tools,
+.campaign-opening .network-key,.campaign-opening .machine-readout,.campaign-opening #repair,
+.campaign-opening .tools-caption,.campaign-opening .mobile-feedback{display:none!important}
+.campaign-opening .world-intro h1{max-width:520px}
+.campaign-opening .world-section{min-height:300px;grid-template-columns:minmax(0,1fr) minmax(260px,.8fr);gap:12px}
+.campaign-opening .planet-scene{min-height:280px;max-height:320px}
+.campaign-opening .world-intro h1 em{color:#c5f5df;font-style:normal}
+.campaign-opening .mission-banner{grid-template-columns:72px minmax(0,1fr);}
+.campaign-opening .mission-progress{grid-column:2;justify-content:flex-start}
+.campaign-opening .campaign-action{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-top:12px;padding:0 16px;border:1px solid #8df2d4;border-radius:9px;background:linear-gradient(95deg,#71e2c6,#b5f6d8);color:#102b2a;font-size:11px;font-weight:900;letter-spacing:.055em;box-shadow:0 5px 18px #49dca72a}
+.campaign-opening .campaign-action[hidden]{display:none}
+.campaign-opening .campaign-action:disabled{opacity:.55;filter:saturate(.55)}
+.campaign-opening .campaign-wallet{display:block;margin-top:5px;color:#dfc99d;font-size:10px;font-weight:800;letter-spacing:.06em}
+.campaign-opening .campaign-wallet[hidden]{display:none}
+.campaign-opening .network-board{max-width:520px;margin-inline:auto;min-height:126px}
+.campaign-opening .tiles{gap:9px}
+.campaign-opening .tile[disabled]{opacity:.72;cursor:default}
+.campaign-opening .tile.suggested{opacity:1}
+.campaign-opening .tile.suggested:after{content:attr(data-campaign-action);font-size:8px}
+.campaign-opening .tutorial-controls{margin-top:12px}
+.campaign-opening .mission-copy p{max-width:620px}
+.campaign-opening .board-recovery{margin-top:13px}
+.campaign-opening #welcome .guide-steps[hidden]{display:none}
+.campaign-opening .intro-copy{max-width:380px}
+.guide-steps[hidden]{display:none}
+.campaign-opening .tile:focus-visible,.campaign-opening .campaign-action:focus-visible{outline:2px solid #c1ffe7;outline-offset:3px}
+@media(max-width:650px){
+ .campaign-opening .world-section{min-height:0;margin:8px 0 10px}
+ .campaign-opening .planet-scene{min-height:132px;max-height:140px}
+ .campaign-opening #planet{width:min(48%,138px);top:3%}
+ .campaign-opening .world-intro{padding:0}
+ .campaign-opening .world-intro>*:not(#save-status){display:none}
+ .campaign-opening .mission-number,.campaign-opening .mission-progress{display:none}
+ .campaign-opening .mission-banner{grid-template-columns:minmax(0,1fr);margin:0 0 8px;padding:8px 10px;gap:0}
+ .campaign-opening .mission-copy h2{font-size:16px}
+ .campaign-opening .mission-copy p{font-size:10px;line-height:1.45}
+ .campaign-opening .campaign-action{width:100%;min-height:44px;margin-top:8px}
+ .campaign-opening .network-card{padding:12px}
+ .campaign-opening .section-heading h2{font-size:17px}
+ .campaign-opening .board-wrap{padding:7px 0 3px}
+ .campaign-opening .network-board{min-height:100px;padding:8px}
+ .campaign-opening .tiles{gap:5px}
+ .campaign-opening .board-foot{display:none}
+}
+@media(max-width:370px){
+ .campaign-opening .planet-scene{min-height:88px;max-height:90px}
+ .campaign-opening #planet{width:min(36%,96px)}
+}

@@ -1,4 +1,4 @@
-import {Machine,PRICE,TARGET,fresh,loaded,valid,connected,neighbors,rates,place,upgrade,upgradeCost,isReady,estimateRecoverySeconds,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
+import {Machine,PRICE,TARGET,fresh,freshCampaign,isCampaign,repairGreenhouse,redeemMineKit,loaded,valid,connected,neighbors,rates,place,upgrade,upgradeCost,isReady,estimateRecoverySeconds,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
 
 const SAVE="relight.webplaytest.v1";
 const FIRST="relight.webplaytest.onboarded.v1";
@@ -25,6 +25,7 @@ const now=()=>Math.floor(Date.now()/1000);
 function setTextIfChanged(el,value){if(el&&el.textContent!==value)el.textContent=value;}
 let state=fresh(),selected=Machine.Generator,lastGoal=-1,lastPlanet=-1,lastCells="",lastNotice=0,saveClock=0,lastFrame=0,toastTimeout=null;
 let storageUnavailable=false,saveWriteProtected=false,lastVerifiedSave=null;
+let firstPreferenceReadFailed=false,tutorialRecordReadFailed=false,tutorialRecordPresent=false;
 const storageWarning="Progress can't be saved in this browser. You can keep playing, but progress won't persist after reload.";
 const unreadableSaveWarning="An existing save can't be read. It was left untouched; this session won't persist after reload.";
 const unverifiedSaveWarning="This browser couldn't verify the saved progress. This session will continue in memory.";
@@ -35,7 +36,7 @@ function storageGetSave(){
 }
 function storageGetFirst(){
   try{return window.localStorage.getItem(FIRST);}
-  catch(e){console.warn("Tutorial preference could not be read; showing the guide.",e);return null;}
+  catch(e){firstPreferenceReadFailed=true;console.warn("Tutorial preference could not be read; showing the guide.",e);return null;}
 }
 function storageSetFirst(value){
   try{window.localStorage.setItem(FIRST,value);return true;}
@@ -43,12 +44,14 @@ function storageSetFirst(value){
 }
 function readTutorialRecord(){
   try{
-    const record=JSON.parse(window.localStorage.getItem(TUTORIAL)||"null");
+    const raw=window.localStorage.getItem(TUTORIAL);
+    tutorialRecordPresent=raw!==null;
+    const record=JSON.parse(raw||"null");
     if(!record||typeof record!=="object"||Array.isArray(record))return null;
     if(record.mode!=="live"||typeof record.active!=="boolean"||typeof record.complete!=="boolean"||
       (record.active&&record.complete)||!Number.isInteger(record.initialRegion)||record.initialRegion<0)return null;
     return {active:record.active,complete:record.complete,mode:"live",initialRegion:record.initialRegion};
-  }catch(e){console.warn("Walkthrough progress could not be read; it can be restarted.",e);return null;}
+  }catch(e){tutorialRecordReadFailed=true;console.warn("Walkthrough progress could not be read; it can be restarted.",e);return null;}
 }
 let tutorialRecord=readTutorialRecord();
 let tutorialActive=tutorialRecord?.active===true&&tutorialRecord.mode==="live";
@@ -76,7 +79,7 @@ function markStorageAvailable(){
   setSaveStatus("Progress saving is available again. A verified copy is stored in this browser.","success");
 }
 const savedRaw=storageGetSave();
-allowFirstTutorialStart=savedRaw===null&&!firstPreference&&!tutorialActive;
+allowFirstTutorialStart=savedRaw===null&&!firstPreference&&!tutorialActive&&!tutorialRecord&&!tutorialRecordPresent&&!tutorialRecordReadFailed&&!saveWriteProtected&&!storageUnavailable;
 if(saveWriteProtected)state=fresh();
 else if(savedRaw!==null){
   try{
@@ -90,6 +93,8 @@ else if(savedRaw!==null){
     state=fresh();
     markStorageUnavailable(e,unreadableSaveWarning,true);
   }
+}else if(!firstPreference&&!tutorialActive&&!tutorialRecord&&!tutorialRecordPresent&&!tutorialRecordReadFailed&&!firstPreferenceReadFailed&&!storageUnavailable){
+  state=freshCampaign();
 }
 if(!saveWriteProtected)lastVerifiedSave=savedRaw;
 function applyOfflineProgress(at){
@@ -219,12 +224,105 @@ function finishWalkthrough(){
   tutorialActive=false;tutorialFinished=true;
   if(!practiceMode)writeTutorialRecord({active:false,complete:true,mode:"live",initialRegion:tutorialInitialRegion});
 }
+function campaignLayout(){
+  const phase=state.campaign?.phase;
+  if(!phase||phase==="open")return {columns:5,rows:5,indices:Array.from({length:25},(_,i)=>i),target:-1};
+  if(phase==="repair"||phase==="restore")return {columns:3,rows:1,indices:[12,13,14],target:phase==="repair"?13:-1};
+  if(phase==="mine-kit"||phase==="first-region")return {columns:3,rows:2,indices:[12,13,14,17,18,19],target:phase==="mine-kit"?17:-1};
+  return {columns:3,rows:3,indices:[7,8,9,12,13,14,17,18,19],target:phase==="expansion"?7:phase==="power"?9:-1};
+}
+function runCampaignAction(event){
+  const phase=state.campaign?.phase;
+  let result;
+  if(phase==="repair")result=repairGreenhouse(state);
+  else if(phase==="mine-kit")result=redeemMineKit(state,17);
+  else if(phase==="expansion")result=place(state,7,Machine.Extractor);
+  else if(phase==="power")result=place(state,9,Machine.Generator);
+  else return;
+  notice(result.message,!result.ok);
+  if(result.ok){persist();render(true);}
+  if(event?.detail===0&&result.ok){
+    const next=document.querySelector(".tile.suggested")||($("campaign-action").hidden?$("mission-title"):$("campaign-action"));
+    next?.focus({preventScroll:true});
+  }
+}
+function renderCampaign(){
+  const campaign=state.campaign;
+  const active=!!campaign&&campaign.phase!=="open";
+  document.body.classList.toggle("campaign-opening",active);
+  $("campaign-action").hidden=true;
+  if(active){
+    const phase=campaign.phase;
+    const prompts={
+      repair:["Bring the greenhouse back online","A relay is broken. Repair the highlighted link with 4 scrap.","REPAIR RELAY · 4 SCRAP"],
+      restore:["The greenhouse is waking","Its LIFE engine is restoring the ground. At 5 restored points, you earn a MINE starter kit."],
+      "mine-kit":["You earned a MINE kit","Install your free starter MINE at the highlighted site. The kit stays yours even if scrap runs out.","INSTALL EARNED MINE · FREE"],
+      "first-region":["Keep the greenhouse alive","The MINE now feeds LIFE. Let restoration reach 100%, then awaken this region."],
+      expansion:["A new site is open","Your first awakening revealed a new site. Place a second MINE there.","PLACE MINE · 12 SCRAP"],
+      power:["The reactor is strained","Two MINEs plus LIFE exceed reactor capacity. Place POWER beside the greenhouse.","PLACE POWER · 15 SCRAP"]
+    };
+    const [title,copy,action]=prompts[phase]||prompts.repair;
+    const environmentCopy={
+      repair:"One broken relay keeps the ruined greenhouse dark.",
+      restore:"The relay is repaired. LIFE is restoring the dark greenhouse.",
+      "mine-kit":"The greenhouse is recovering. An earned MINE kit opens automation.",
+      "first-region":"MINE feeds LIFE. Keep this region supplied until it awakens.",
+      expansion:"Your first region is awake. A new site opens the next network step.",
+      power:"Two MINEs and LIFE strain the reactor. Add POWER beside the greenhouse."
+    }[phase];
+    setTextIfChanged($("world-title"),"A reactor still burns.");
+    setTextIfChanged($("world-copy"),environmentCopy||"The planet is recovering.");
+    setTextIfChanged($("mission-eyebrow"),"BLACKOUT · FIRST LIGHT");
+    setTextIfChanged($("mission-number"),phase==="repair"?"01":phase==="restore"?"02":phase==="mine-kit"?"03":phase==="first-region"?"04":phase==="expansion"?"05":"06");
+    setTextIfChanged($("mission-title"),title);
+    setTextIfChanged($("mission-description"),copy);
+    $("mission-stages").setAttribute("aria-label","Opening progress");
+    const completed={repair:0,restore:1,"mine-kit":2,"first-region":3,expansion:4,power:5}[phase]||0;
+    [...$("mission-stages").children].forEach((dot,index)=>{dot.className=index<completed?"done":index===completed?"active":"";});
+    if(action){
+      $("campaign-action").textContent=action;
+      $("campaign-action").hidden=false;
+      const costs={repair:4,"mine-kit":0,expansion:PRICE[Machine.Extractor],power:PRICE[Machine.Generator]};
+      $("campaign-action").disabled=state.scrap<(costs[phase]||0);
+      $("campaign-wallet").hidden=!(costs[phase]>0);
+      $("campaign-wallet").textContent="Available: "+readable(state.scrap)+" scrap";
+    }else{
+      $("campaign-wallet").hidden=true;
+    }
+    $("tutorial-controls").hidden=!practiceMode;
+    $("tutorial-return").hidden=!practiceMode;
+    $("tutorial-skip").hidden=true;$("tutorial-done").hidden=true;$("tutorial-why").hidden=true;$("tutorial-mode-label").hidden=!practiceMode;
+    if(practiceMode)setTextIfChanged($("tutorial-mode-label"),"Temporary practice · reload returns to your saved world; nothing transfers.");
+    const layout=campaignLayout();
+    $("tiles").style.gridTemplateColumns=`repeat(${layout.columns},minmax(0,1fr))`;
+    $("tiles").style.gridTemplateRows=`repeat(${layout.rows},minmax(0,1fr))`;
+    $("network-board").style.aspectRatio=`${layout.columns} / ${layout.rows}`;
+    $("network-board-title").textContent=phase==="repair"||phase==="restore"?"Ruined greenhouse · broken relay":phase==="mine-kit"||phase==="first-region"?"Greenhouse · first MINE site":"Frontier · new site";
+    $("network-eyebrow").textContent=phase==="repair"||phase==="restore"?"FIRST LIGHT / REPAIR LINK":phase==="mine-kit"||phase==="first-region"?"GREENHOUSE / STARTER SITE":"NEW FRONTIER / EXPANSION";
+  }else{
+    const defaultTitle="Every world<br>deserves <em>another dawn.</em>";
+    if($("world-title").innerHTML!==defaultTitle)$("world-title").innerHTML=defaultTitle;
+    setTextIfChanged($("world-copy"),"The planet has gone quiet. Restore its energy network, power the machines and watch life return—one region at a time.");
+    $("campaign-wallet").hidden=true;
+    $("network-board").style.aspectRatio="1 / 1";
+    $("tiles").style.gridTemplateColumns="repeat(5,minmax(0,1fr))";
+    $("tiles").style.gridTemplateRows="repeat(5,minmax(0,1fr))";
+    $("network-board-title").textContent="Build the connection.";
+    $("network-eyebrow").textContent="THE GRID / NETWORK 5×5";
+    $("tutorial-controls").hidden=!practiceMode;
+    $("tutorial-return").hidden=!practiceMode;
+    $("tutorial-mode-label").hidden=!practiceMode;
+    if(practiceMode)setTextIfChanged($("tutorial-mode-label"),"Temporary practice · reload returns to your saved world; nothing transfers.");
+  }
+  return active;
+}
 function renderTutorial(){
+  if(state.campaign&&state.campaign.phase!=="open")return;
   const why=$("tutorial-why"),controls=$("tutorial-controls"),skip=$("tutorial-skip"),leave=$("tutorial-return"),done=$("tutorial-done"),modeLabel=$("tutorial-mode-label");
   if(!tutorialActive&&!tutorialFinished){
     clearTutorialHighlights();lastTutorialStage=-1;
-    controls.hidden=true;
-    why.hidden=true;skip.hidden=true;leave.hidden=true;done.hidden=true;modeLabel.hidden=true;
+    controls.hidden=!practiceMode;
+    why.hidden=true;skip.hidden=true;leave.hidden=!practiceMode;done.hidden=true;modeLabel.hidden=!practiceMode;
     setTextIfChanged($("mission-eyebrow"),"YOUR NEXT MOVE");
     return;
   }
@@ -311,6 +409,20 @@ function renderTutorial(){
   }
 }
 function startWalkthrough(){
+  if(isCampaign(state)){
+    if(state.campaign.phase!=="open"){
+      closeGuide(true);render(true);return;
+    }
+    if(!practiceMode){
+      state.savedAt=now();
+      practiceReturn={state,tutorialRecord,tutorialActive,tutorialFinished,tutorialInitialRegion,lastVerifiedSave,storageUnavailable,saveWriteProtected};
+      practiceMode=true;tutorialActive=false;tutorialFinished=false;state=freshCampaign();selected=Machine.Generator;
+      closeGuide(true);render(true);
+      if(window.matchMedia("(max-width: 650px)").matches)$("mission-title").scrollIntoView({behavior:"instant",block:"start"});
+      return;
+    }
+    closeGuide(true);render(true);return;
+  }
   if(tutorialActive){closeGuide(true);render(true);return;}
   const savedTutorialFinished=tutorialFinished;
   tutorialFinished=false;
@@ -322,7 +434,7 @@ function startWalkthrough(){
   }else{
     state.savedAt=now();
     practiceReturn={state,tutorialRecord,tutorialActive,tutorialFinished:savedTutorialFinished,tutorialInitialRegion,lastVerifiedSave,storageUnavailable,saveWriteProtected};
-    practiceMode=true;tutorialActive=true;state=fresh();selected=Machine.Generator;
+    practiceMode=true;tutorialActive=false;state=freshCampaign();selected=Machine.Generator;
     tutorialInitialRegion=state.region;
   }
   closeGuide(true);render(true);
@@ -494,7 +606,12 @@ function choose(machine,manual=true){
       words[selected]+" selected. Now tap an empty square.");
 }
 document.querySelectorAll(".tool, .quick-tool").forEach(el=>el.addEventListener("click",()=>choose(Number(el.dataset.machine))));
+$("campaign-action").addEventListener("click",runCampaignAction);
 function tap(index,event){
+  if(isCampaign(state)&&state.campaign.phase!=="open"){
+    if(index===campaignLayout().target)runCampaignAction(event);
+    return;
+  }
   const previousTutorialStage=tutorialActive?tutorialStage():-1;
   const result=place(state,index,selected);
   notice(result.message,!result.ok);
@@ -529,12 +646,23 @@ $("repair").addEventListener("click",()=>{
 });
 const welcome=$("welcome");
 function openGuide(){
+  if(isCampaign(state)){
+    $("begin-label").textContent=state.campaign.phase==="open"&&!practiceMode?"REPLAY OPENING IN PRACTICE":"CONTINUE OPENING";
+    $("dismiss-help").textContent="Return to the greenhouse";
+    $("welcome-copy").textContent=state.campaign.phase==="open"&&!practiceMode?
+      "Replay the first repair, earned MINE kit, region awakening and POWER unlock in a temporary world. Your current save stays separate.":
+      "Bring the greenhouse online, earn a MINE kit through restoration, awaken the first region, then introduce POWER when the reactor is strained.";
+    document.querySelector(".guide-steps").hidden=true;
+  }else{
+    $("dismiss-help").textContent="Explore without walkthrough";
+    document.querySelector(".guide-steps").hidden=false;
   $("begin-label").textContent=tutorialActive?"RESUME WALKTHROUGH":allowFirstTutorialStart?"START GUIDED WALKTHROUGH":"REPLAY IN PRACTICE WORLD";
   $("welcome-copy").textContent=tutorialActive?
     "Your walkthrough resumes from the actual machines and progress in this saved world.":
     allowFirstTutorialStart?
       "Follow five goals on the real grid. Each completes only after the connected machines or recovery meet its goal.":
       "Replay with a temporary practice network. Practice changes never transfer; reloading or choosing Return brings you back to your saved world.";
+  }
   if(typeof welcome.showModal==="function"&&!welcome.open)welcome.showModal();
   else welcome.setAttribute("open","");
 }
@@ -563,10 +691,11 @@ $("tutorial-skip").addEventListener("click",skipWalkthrough);
 $("tutorial-return").addEventListener("click",returnToSavedWorld);
 $("tutorial-done").addEventListener("click",()=>{tutorialFinished=false;render(true);});
 welcome.addEventListener("cancel",()=>{storageSetFirst("yes");firstPreference="yes";if(!tutorialActive)allowFirstTutorialStart=false;});
-if(!firstPreference)openGuide();
+if(!firstPreference&&!isCampaign(state))openGuide();
 if(away>2){notice("Offline progress applied.");showOfflineRecap(offlineResult);}
 function render(force=false){
   if(!valid(state)){console.error("Invalid world, resetting safely");state=fresh();persist();}
+  const campaignOpening=renderCampaign();
   const r=rates(state),m=mission(state),ready=isReady(state),percentage=Math.min(100,100*state.restoration/TARGET(state.region));
   const explanation=machineExplanation(r);
   if($("machine-readout").textContent!==explanation)$("machine-readout").textContent=explanation;
@@ -602,8 +731,21 @@ function render(force=false){
     eta===Infinity?(hasMine&&!hasConnectedMine?"Reconnect a MINE to fuel recovery":"Connect a MINE to fuel recovery"):
     eta>MAX_DISPLAYED_ETA_SECONDS?">1y active to awaken":
     "~"+readableEta(eta)+" active to awaken";
-  $("revive").hidden=!ready;
-  $("revive").disabled=!ready;
+  if(campaignOpening){
+    const phase=state.campaign.phase;
+    const campaignStatus={
+      repair:"Greenhouse dark · relay repair needed",
+      restore:state.restoration>=5?"MINE kit earned · installing now":
+        Math.floor(state.restoration)+" / 5 points to MINE kit",
+      "mine-kit":"MINE kit earned · one-time reward",
+      "first-region":ready?"First region ready to awaken": "First region · "+Math.floor(percentage)+"% restored",
+      expansion:"New site unlocked · second MINE needed",
+      power:"Power output "+Math.round(r.fraction*100)+"% · POWER can relieve the overload"
+    };
+    $("region-state").textContent=campaignStatus[phase]||"Opening objective";
+  }
+  $("revive").hidden=!ready||campaignOpening&&state.campaign.phase!=="first-region";
+  $("revive").disabled=!ready||campaignOpening&&state.campaign.phase!=="first-region";
   $("revive-label").textContent=ready?"AWAKEN REGION "+String(state.region+1).padStart(2,"0"):"AWAKEN REGION";
   $("revive-hint").hidden=!ready;
   if(m!==lastGoal){
@@ -618,32 +760,64 @@ function render(force=false){
   else if(m>=2)
     $("selected-tool-text").textContent=selected===Machine.Empty?
       "REMOVE selected · tap a structure":words[selected]+" selected · tap an empty square";
-  if(!tutorialActive&&!tutorialFinished){
+  if(campaignOpening){
+    const campaignHint={
+      repair:"Repair the highlighted broken relay.",
+      restore:"Relay connected · LIFE is restoring the greenhouse.",
+      "mine-kit":"Starter MINE kit earned · install it at the highlighted site.",
+      "first-region":"MINE connected · LIFE is restoring the first region.",
+      expansion:"New frontier open · install the highlighted MINE.",
+      power:"Reactor strained · install POWER beside LIFE."
+    }[state.campaign.phase];
+    if(campaignHint)setTextIfChanged($("selected-tool-text"),campaignHint);
+  }
+  if(!campaignOpening&&!tutorialActive&&!tutorialFinished){
     setTextIfChanged($("mission-number"),String(Math.min(m+1,4)).padStart(2,"0"));
     setTextIfChanged($("mission-title"),ready?"The world is ready. Awaken it!":stepTitles[m]);
     setTextIfChanged($("mission-description"),ready?"Tap the glowing AWAKEN REGION button by the grid. No ads, no payment—this is your reward.":stepDescriptions[m]);
     [...$("mission-stages").children].forEach((child,i)=>{const next=i<m?"done":i===m?"active":"";if(child.className!==next)child.className=next;});
   }
-  const hint=suggested(state),cellKey=state.cells.join(",")+"|"+hint+"|"+(state.scrap>0?"fuel":"empty")+"|"+r.fraction;
+  const hint=suggested(state),layout=campaignLayout(),phase=state.campaign?.phase||"legacy";
+  const cellKey=state.cells.join(",")+"|"+hint+"|"+(state.scrap>0?"fuel":"empty")+"|"+r.fraction+"|"+phase;
   if(force||cellKey!==lastCells){
     lastCells=cellKey;
+    const visible=new Map(layout.indices.map((index,position)=>[index,{column:position%layout.columns+1,row:Math.floor(position/layout.columns)+1}]));
     const links=r.connected;
     tiles.forEach(({btn,symbol,label},i)=>{
       const type=state.cells[i];
       const statuses=machineStatuses(type,i,r);
       const statusLabel=machineStatusLabel(statuses);
-      btn.className="tile "+kinds[type]+statuses.map(status=>" state-"+status).join("")+(i===hint&&type===0?" suggested":"");
+      const place=visible.get(i),campaignTarget=campaignOpening&&i===layout.target;
+      const campaignActionLabel=campaignTarget?({repair:"REPAIR","mine-kit":"MINE",expansion:"MINE",power:"POWER"}[phase]||""):"";
+      btn.style.display=place?"flex":"none";
+      if(place){btn.style.gridColumn=String(place.column);btn.style.gridRow=String(place.row);}
+      btn.disabled=campaignOpening&&!campaignTarget;
+      btn.className="tile "+kinds[type]+statuses.map(status=>" state-"+status).join("")+(campaignTarget||!campaignOpening&&i===hint&&type===0?" suggested":"");
+      if(campaignActionLabel)btn.dataset.campaignAction=campaignActionLabel;else delete btn.dataset.campaignAction;
       symbol.textContent=glyph[type];label.textContent=type===0?"":words[type];
       btn.querySelector(".tile-status").textContent=statusLabel;
       const accessibleStatus=machineStatusDescription(statuses,r);
-      btn.setAttribute("aria-label",(type===0?"Empty tile":"Tile with "+words[type])+" row "+(Math.floor(i/5)+1)+", column "+(i%5+1)+(statuses.length?"; "+accessibleStatus:"")+(i===hint?", suggested next tile":""));
-      btn.title=type===0?"Tap to build "+words[selected]:words[type]+(statuses.length?" · "+accessibleStatus:"");
+      const campaignLabel=phase==="repair"&&i===13?"Broken greenhouse relay site; repair the relay here":
+        phase==="mine-kit"&&i===17?"Highlighted site for your earned starter MINE":
+        phase==="expansion"&&i===7?"Newly opened site for the second MINE":
+        phase==="power"&&i===9?"Highlighted connected site for POWER beside the greenhouse":null;
+      const coordinates=" row "+(Math.floor(i/5)+1)+", column "+(i%5+1);
+      const campaignAccessibleLabel=type!==Machine.Empty?
+        "Tile with "+words[type]+coordinates+(accessibleStatus?"; "+accessibleStatus:"")+"; opening structure" :
+        campaignLabel||"Empty sealed site; opens later";
+      btn.setAttribute("aria-label",campaignOpening?campaignAccessibleLabel:
+        (type===0?"Empty tile":"Tile with "+words[type])+" row "+(Math.floor(i/5)+1)+", column "+(i%5+1)+(statuses.length?"; "+accessibleStatus:"")+(i===hint?", suggested next tile":""));
+      btn.title=campaignOpening?(type!==Machine.Empty?words[type]+coordinates+(accessibleStatus?" · "+accessibleStatus:""):campaignLabel||"Empty site; opens later"):
+        type===0?"Tap to build "+words[selected]:words[type]+(statuses.length?" · "+accessibleStatus:"");
     });
     const lines=[];
+    const shown=new Set(layout.indices);
     for(let i=0;i<25;i++)if(links[i]){
       for(const to of [i+1,i+5]){
-        if(to>=25||to===i+1&&i%5===4||!links[to])continue;
-        const x1=50+i%5*100,y1=50+Math.floor(i/5)*100,x2=50+to%5*100,y2=50+Math.floor(to/5)*100;
+        if(to>=25||to===i+1&&i%5===4||!links[to]||!shown.has(i)||!shown.has(to))continue;
+        const a=visible.get(i),b=visible.get(to);
+        const x1=(a.column-.5)*500/layout.columns,y1=(a.row-.5)*500/layout.rows;
+        const x2=(b.column-.5)*500/layout.columns,y2=(b.row-.5)*500/layout.rows;
         lines.push('<line class="wire" x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'"></line>');
         lines.push('<line class="wire-live" x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'"></line>');
       }
@@ -667,15 +841,24 @@ function render(force=false){
   // as the native renderer to prevent independent browser drift.
   const planetIndex=Math.floor(state.region/3);
   const planetRecovery=((state.region%3)+percentage/100)/3;
-  const planetBucket=Math.max(0,Math.min(24,Math.floor(planetRecovery*24)));
+  const campaignPhase=campaignOpening?state.campaign.phase:null;
+  const firstCampaignPlanet=campaignOpening&&state.region===0;
+  const planetVisualRecovery=firstCampaignPlanet?
+    campaignPhase==="repair"?0:Math.min(1/3,.09+(1/3-.09)*percentage/100):planetRecovery;
+  const planetBucket=Math.max(0,Math.min(24,Math.floor(planetVisualRecovery*24)));
   const planetKey=planetIndex*100+planetBucket;
   if(planetKey!==lastPlanet||force){
     lastPlanet=planetKey;
     drawPlanet(planetIndex,planetBucket/24);
   }
-  $("planet-caption").textContent=planetRecovery>=.96?"ATMOSPHERE: RENEWED":
-    planetRecovery>=.2?"ATMOSPHERE: RECOVERING":"ATMOSPHERE: DORMANT";
-  $("planet-tag").lastChild.textContent=ready?" READY TO AWAKEN":" RESTORATION ACTIVE";
+  $("planet-caption").textContent=campaignOpening?
+    campaignPhase==="repair"?"GREENHOUSE: DARK":campaignPhase==="power"?"NETWORK: OVERLOADED":
+      campaignPhase==="expansion"?"FRONTIER: OPEN":"GREENHOUSE: RESTORING":
+    planetRecovery>=.96?"ATMOSPHERE: RENEWED":planetRecovery>=.2?"ATMOSPHERE: RECOVERING":"ATMOSPHERE: DORMANT";
+  $("planet-tag").lastChild.textContent=campaignOpening?
+    campaignPhase==="repair"?" GREENHOUSE OFFLINE":campaignPhase==="power"?" REACTOR OVERLOADED":
+      campaignPhase==="expansion"?" NEW SITE OPEN":" GREENHOUSE ONLINE":
+    ready?" READY TO AWAKEN":" RESTORATION ACTIVE";
   $("planet-name").textContent=["AURORA-9","SOLACE","VERDANT","HOLLOW SKY","ECHO PRIME","NEW DAWN"][planetIndex%6];
   if(!$("toast").classList.contains("visible")&&!tutorialActive&&!tutorialFinished)
     mobileFeedback($("selected-tool-text").textContent);

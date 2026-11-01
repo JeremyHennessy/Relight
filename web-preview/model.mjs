@@ -4,6 +4,17 @@ export const Machine=Object.freeze({Empty:0,Core:1,Relay:2,Extractor:3,Restorer:
 export const PRICE=Object.freeze({[Machine.Relay]:4,[Machine.Extractor]:12,[Machine.Restorer]:18,[Machine.Generator]:15});
 export const WIDTH=5, MAX_OFFLINE=8*3600, MINING_OFFLINE=30*60;
 export const TARGET=region=>100*(1+region*0.5);
+export const CAMPAIGN_VERSION=1;
+export const CAMPAIGN_PHASES=Object.freeze(["repair","restore","mine-kit","first-region","expansion","power","open"]);
+const INTRO_AREA=new Set([12,13,14,17,18,19]);
+const EXPANDED_AREA=new Set([7,8,9,12,13,14,17,18,19]);
+export const isCampaign=s=>!!s?.campaign;
+export function freshCampaign(){
+  const cells=Array(25).fill(0);
+  cells[12]=Machine.Core;cells[14]=Machine.Restorer;
+  return {cells,scrap:10,restoration:0,region:0,extractorLevel:0,powerLevel:0,savedAt:0,totalPlayed:0,
+    campaign:{version:CAMPAIGN_VERSION,phase:"repair",mineKit:"locked"}};
+}
 export function fresh(){
   const cells=Array(25).fill(0);
   cells[12]=Machine.Core; cells[11]=Machine.Extractor; cells[13]=Machine.Relay; cells[14]=Machine.Restorer;
@@ -14,7 +25,21 @@ export function valid(s){
   if(!s.cells.every(v=>Number.isInteger(v)&&v>=0&&v<=5))return false;
   if(![s.scrap,s.restoration,s.region,s.extractorLevel,s.powerLevel,s.savedAt,s.totalPlayed]
       .every(v=>typeof v==="number"&&Number.isFinite(v)&&v>=0))return false;
-  return [s.region,s.extractorLevel,s.powerLevel,s.savedAt].every(Number.isInteger);
+  if(![s.region,s.extractorLevel,s.powerLevel,s.savedAt].every(Number.isInteger))return false;
+  if(s.campaign!==undefined){
+    const c=s.campaign;
+    if(!c||typeof c!=="object"||Array.isArray(c)||c.version!==CAMPAIGN_VERSION||
+      !CAMPAIGN_PHASES.includes(c.phase)||!(["locked","earned","redeemed"].includes(c.mineKit)))return false;
+    const extraMachines=s.cells.filter((v,i)=>v!==Machine.Empty&&i!==12);
+    if(c.phase==="repair"&&(s.region!==0||c.mineKit!=="locked"||s.cells[13]!==0||s.cells[14]!==Machine.Restorer||extraMachines.length!==1))return false;
+    if(c.phase==="restore"&&(s.region!==0||s.restoration>=5||c.mineKit!=="locked"||s.cells[13]!==Machine.Relay||s.cells[14]!==Machine.Restorer||extraMachines.length!==2))return false;
+    if(c.phase==="mine-kit"&&(s.region!==0||c.mineKit!=="earned"||s.restoration<5||s.cells[13]!==Machine.Relay||s.cells[14]!==Machine.Restorer||s.cells[17]!==0||extraMachines.length!==2))return false;
+    if(c.phase==="first-region"&&(s.region!==0||c.mineKit!=="redeemed"||s.cells[13]!==Machine.Relay||s.cells[14]!==Machine.Restorer||s.cells[17]!==Machine.Extractor||extraMachines.length!==3))return false;
+    if(c.phase==="expansion"&&(s.region!==1||c.mineKit!=="redeemed"||s.cells[13]!==Machine.Relay||s.cells[14]!==Machine.Restorer||s.cells[17]!==Machine.Extractor||s.cells[7]!==0||s.cells[9]!==0))return false;
+    if(c.phase==="power"&&(s.region!==1||c.mineKit!=="redeemed"||s.cells[17]!==Machine.Extractor||s.cells[7]!==Machine.Extractor||s.cells[9]!==0))return false;
+    if(c.phase==="open"&&(s.region<1||c.mineKit!=="redeemed"))return false;
+  }
+  return true;
 }
 export const loaded=s=>valid(s)?s:fresh();
 export function neighbors(i){
@@ -53,20 +78,55 @@ export function rates(s){
   return {mined,used,restored,consumers,capacity,fraction,connected:links};
 }
 export function place(s,index,machine){
+  const phase=s.campaign?.phase;
+  if(phase&&phase!=="open"){
+    const allowed=(phase==="expansion"&&machine===Machine.Extractor&&index===7)||
+      (phase==="power"&&machine===Machine.Generator&&index===9);
+    if(!allowed)return {ok:false,message:"That action has not been introduced yet."};
+  }
   if(!Number.isInteger(index)||index<0||index>=25||index===12)return {ok:false,message:"The core cannot be replaced."};
   if(![0,2,3,4,5].includes(machine))return {ok:false,message:"Unknown structure."};
   if(machine===Machine.Empty){
     if(s.cells[index]===0)return {ok:false,message:"Nothing to remove here."};
+    if(phase==="open"&&s.cells.includes(Machine.Extractor)){
+      const trial=s.cells.slice();trial[index]=Machine.Empty;
+      const beforeRates=rates(s),afterRates=rates({...s,cells:trial});
+      if(beforeRates.mined>0&&afterRates.mined===0)
+        return {ok:false,message:"Keep at least one connected MINE so the greenhouse can keep running."};
+    }
     s.cells[index]=0;return {ok:true,message:"Structure removed. No scrap refunded."};
   }
   if(s.cells[index]!==0)return {ok:false,message:"Tile occupied. Select REMOVE to clear it."};
   if(s.scrap<PRICE[machine])return {ok:false,message:"Not enough scrap. Your mines keep producing."};
+  if(phase==="expansion"||phase==="power"){
+    const trial=s.cells.slice();trial[index]=machine;
+    if(!EXPANDED_AREA.has(index)||!connected({...s,cells:trial})[index])return {ok:false,message:"That new site is not connected yet."};
+    if(phase==="power"&&!neighbors(index).some(n=>s.cells[n]===Machine.Restorer))return {ok:false,message:"POWER must connect beside the greenhouse."};
+  }
   s.scrap-=PRICE[machine];s.cells[index]=machine;
+  if(phase==="expansion")s.campaign.phase="power";
+  if(phase==="power")s.campaign.phase="open";
   if(!connected(s)[index])
     return {ok:true,message:"Structure built, but it is disconnected. Build a RELAY path back to the reactor to connect it."};
   return {ok:true,message:"Structure built. Watch the network respond."};
 }
+export function repairGreenhouse(s){
+  if(s.campaign?.phase!=="repair")return {ok:false,message:"There is no broken greenhouse relay to repair."};
+  if(s.cells[13]!==Machine.Empty||!connected(s)[12])return {ok:false,message:"The relay site is no longer available."};
+  if(s.scrap<4)return {ok:false,message:"The relay repair needs 4 scrap."};
+  s.scrap-=4;s.cells[13]=Machine.Relay;s.campaign.phase="restore";
+  return {ok:true,message:"Relay repaired. The greenhouse is drawing power."};
+}
+export function redeemMineKit(s,index=17){
+  if(s.campaign?.phase!=="mine-kit"||s.campaign.mineKit!=="earned")return {ok:false,message:"No earned MINE kit is ready."};
+  const trial=s.cells.slice();if(Number.isInteger(index)&&index>=0&&index<trial.length)trial[index]=Machine.Extractor;
+  if(index!==17||!INTRO_AREA.has(index)||s.cells[index]!==Machine.Empty||!connected({...s,cells:trial})[index])
+    return {ok:false,message:"Choose the highlighted connected site for the starter MINE."};
+  s.cells[index]=Machine.Extractor;s.campaign.mineKit="redeemed";s.campaign.phase="first-region";
+  return {ok:true,message:"Starter MINE installed. It was earned, so no scrap was spent."};
+}
 export function upgrade(s,mining){
+  if(s.campaign&&s.campaign.phase!=="open")return {ok:false,message:"Upgrades unlock after the first POWER installation."};
   const level=mining?s.extractorLevel:s.powerLevel;
   const cost=Math.floor(20*Math.pow(1.8,Math.min(level,40)));
   if(s.scrap<cost)return {ok:false,message:"Not enough scrap for this upgrade."};
@@ -101,12 +161,16 @@ export function estimateRecoverySeconds(s){
 }
 export function claim(s){
   if(!isReady(s))return {ok:false,message:"Restore the region before awakening it."};
+  if(s.campaign&&s.campaign.phase!=="first-region"&&s.campaign.phase!=="open")
+    return {ok:false,message:"Complete the opening network before awakening this region."};
   s.restoration=0;s.region++;s.scrap+=40+s.region*10;
+  if(s.campaign?.phase==="first-region")s.campaign.phase="expansion";
   return {ok:true,message:"Region revived! A new frontier awaits."};
 }
 export function resetGrid(s){
+  if(s.campaign&&s.campaign.phase!=="open")return {ok:false,message:"The opening campaign cannot be reset."};
   s.cells=fresh().cells;
-  return {ok:true,message:"Starting network restored. Progress preserved."};
+  return {ok:true,message:s.campaign?"Starting network restored. Opening unlocks and progress preserved.":"Starting network restored. Progress preserved."};
 }
 export function advance(s,seconds,miningSeconds=seconds){
   if(!Number.isFinite(seconds)||seconds<=0)return;
@@ -125,6 +189,9 @@ export function advance(s,seconds,miningSeconds=seconds){
     }
   }
   s.totalPlayed+=seconds;
+  if(s.campaign?.phase==="restore"&&s.restoration>=5){
+    s.campaign.phase="mine-kit";s.campaign.mineKit="earned";
+  }
 }
 export function offline(s,now){
   const elapsed=s.savedAt<=0?0:Math.max(0,now-s.savedAt);
