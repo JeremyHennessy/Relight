@@ -1,7 +1,8 @@
-import {Machine,PRICE,TARGET,fresh,loaded,valid,connected,rates,place,upgrade,upgradeCost,isReady,estimateRecoverySeconds,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
+import {Machine,PRICE,TARGET,fresh,loaded,valid,connected,neighbors,rates,place,upgrade,upgradeCost,isReady,estimateRecoverySeconds,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
 
 const SAVE="relight.webplaytest.v1";
 const FIRST="relight.webplaytest.onboarded.v1";
+const TUTORIAL="relight.webplaytest.tutorial.v1";
 const MAX_DISPLAYED_ETA_SECONDS=365*24*60*60;
 const glyph={0:"+",1:"✦",2:"◇",3:"⬡",4:"✳",5:"ϟ"};
 const words={0:"REMOVE",1:"CORE",2:"RELAY",3:"MINE",4:"LIFE",5:"POWER"};
@@ -21,6 +22,7 @@ const stepDescriptions=[
 ];
 const $=id=>document.getElementById(id);
 const now=()=>Math.floor(Date.now()/1000);
+function setTextIfChanged(el,value){if(el&&el.textContent!==value)el.textContent=value;}
 let state=fresh(),selected=Machine.Generator,lastGoal=-1,lastPlanet=-1,lastCells="",lastNotice=0,saveClock=0,lastFrame=0,toastTimeout=null;
 let storageUnavailable=false,saveWriteProtected=false,lastVerifiedSave=null;
 const storageWarning="Progress can't be saved in this browser. You can keep playing, but progress won't persist after reload.";
@@ -39,6 +41,26 @@ function storageSetFirst(value){
   try{window.localStorage.setItem(FIRST,value);return true;}
   catch(e){console.warn("Tutorial preference could not be saved.",e);return false;}
 }
+function readTutorialRecord(){
+  try{
+    const record=JSON.parse(window.localStorage.getItem(TUTORIAL)||"null");
+    if(!record||typeof record!=="object"||Array.isArray(record))return null;
+    if(record.mode!=="live"||typeof record.active!=="boolean"||typeof record.complete!=="boolean"||
+      (record.active&&record.complete)||!Number.isInteger(record.initialRegion)||record.initialRegion<0)return null;
+    return {active:record.active,complete:record.complete,mode:"live",initialRegion:record.initialRegion};
+  }catch(e){console.warn("Walkthrough progress could not be read; it can be restarted.",e);return null;}
+}
+let tutorialRecord=readTutorialRecord();
+let tutorialActive=tutorialRecord?.active===true&&tutorialRecord.mode==="live";
+let practiceMode=false,practiceReturn=null;
+let tutorialInitialRegion=tutorialRecord?.initialRegion??state.region;
+let firstPreference=storageGetFirst();
+let allowFirstTutorialStart=false;
+function writeTutorialRecord(record){
+  tutorialRecord=record;
+  try{window.localStorage.setItem(TUTORIAL,JSON.stringify(record));return true;}
+  catch(e){console.warn("Walkthrough progress could not be saved; it can be restarted.",e);return false;}
+}
 function markStorageUnavailable(error,message=storageWarning,protectSave=false){
   if(!storageUnavailable)console.warn("Browser storage unavailable; progress will not persist.",error);
   storageUnavailable=true;
@@ -54,6 +76,7 @@ function markStorageAvailable(){
   setSaveStatus("Progress saving is available again. A verified copy is stored in this browser.","success");
 }
 const savedRaw=storageGetSave();
+allowFirstTutorialStart=savedRaw===null&&!firstPreference&&!tutorialActive;
 if(saveWriteProtected)state=fresh();
 else if(savedRaw!==null){
   try{
@@ -69,7 +92,18 @@ else if(savedRaw!==null){
   }
 }
 if(!saveWriteProtected)lastVerifiedSave=savedRaw;
-const away=offline(state,now());
+function applyOfflineProgress(at){
+  const before={savedAt:state.savedAt,scrap:state.scrap,restoration:state.restoration};
+  const elapsedSeconds=before.savedAt<=0?0:Math.max(0,at-before.savedAt);
+  const appliedSeconds=offline(state,at);
+  return {
+    elapsedSeconds,appliedSeconds,
+    recoveryGained:state.restoration-before.restoration,
+    scrapNet:state.scrap-before.scrap
+  };
+}
+const offlineResult=applyOfflineProgress(now());
+const away=offlineResult.appliedSeconds;
 function setSaveStatus(message,tone){
   const el=$("save-status");
   if(!el)return;
@@ -77,7 +111,246 @@ function setSaveStatus(message,tone){
   el.dataset.tone=tone;
   el.hidden=!message;
 }
+function formatDuration(seconds){
+  const whole=Math.floor(seconds);
+  if(whole>=3600){
+    const hours=Math.floor(whole/3600),minutes=Math.floor(whole%3600/60);
+    return hours+"h"+(minutes?" "+minutes+"m":"");
+  }
+  if(whole>=60){
+    const minutes=Math.floor(whole/60),remaining=whole%60;
+    return minutes+"m"+(remaining?" "+remaining+"s":"");
+  }
+  return whole+"s";
+}
+function signedAmount(value,unit){
+  const rounded=Math.round(Math.abs(value)*10)/10;
+  const sign=value>0?"+":value<0?"−":"";
+  return sign+rounded.toFixed(1)+" "+unit;
+}
+function planetMilestonePercent(s){
+  const regionPercent=Math.min(100,100*s.restoration/TARGET(s.region));
+  return Math.floor(((s.region%3)+regionPercent/100)/3*100);
+}
+function showRecap(title,details,includeOfflineCaps=false){
+  const panel=$("progress-recap");
+  $("recap-title").textContent=title;
+  const list=$("recap-details");list.replaceChildren();
+  for(const detail of details){
+    const line=document.createElement("p");line.textContent=detail;list.append(line);
+  }
+  $("recap-caps").hidden=!includeOfflineCaps;
+  panel.hidden=false;
+}
+function showOfflineRecap(result){
+  const capped=result.elapsedSeconds>result.appliedSeconds;
+  const elapsed=capped?" of "+formatDuration(result.elapsedSeconds)+" away":"";
+  const title=isReady(state)?"Region ready while you were away":"Offline progress applied";
+  showRecap(title,[
+    "Applied "+formatDuration(result.appliedSeconds)+" offline progress"+elapsed+".",
+    "Recovery gained: "+signedAmount(result.recoveryGained,"points")+".",
+    "Scrap net: "+signedAmount(result.scrapNet,"scrap")+".",
+    "Planet milestone: "+planetMilestonePercent(state)+"% of its three-region cycle."
+  ],true);
+}
+function showClaimRecap(scrapReward){
+  const planetName=["AURORA-9","SOLACE","VERDANT","HOLLOW SKY","ECHO PRIME","NEW DAWN"][Math.floor(state.region/3)%6];
+  showRecap("Region awakened",[
+    "Claimed "+signedAmount(scrapReward,"scrap")+".",
+    "Next region recovery target: "+TARGET(state.region)+" points.",
+    planetName+" milestone progress: "+planetMilestonePercent(state)+"% toward the next planet (three regions)."
+  ]);
+}
+let tutorialFinished=false;
+let lastTutorialStage=-1;
+const walkthroughStages=[
+  {title:"Connect POWER beside LIFE",copy:"Place a connected POWER generator next to LIFE.",why:"POWER adds network capacity and boosts adjacent LIFE. The status above compares connected demand with available capacity."},
+  {title:"Grow the scrap supply",copy:"Add a second connected MINE.",why:"MINE produces the scrap you need to build. LIFE also spends scrap to restore the region."},
+  {title:"Extend the relay path",copy:"Add a RELAY to an open tile connected to your network.",why:"A connected relay carries energy farther across the grid, so later machines can join the network."},
+  {title:"Add another LIFE engine",copy:"Build a second connected LIFE engine.",why:"LIFE turns scrap into recovery and uses network capacity. Watch consumers and capacity together; demand above capacity slows output."},
+  {title:"Awaken the ready region",copy:"Keep LIFE supplied until recovery reaches its target, then AWAKEN REGION.",why:"The meter is the claim condition. Awakening grants the normal region reward once and starts the next region."}
+];
+function tutorialBuildStage(){
+  const links=connected(state);
+  let mineCount=0,boost=false;
+  for(let i=0;i<state.cells.length;i++)if(links[i]){
+    if(state.cells[i]===Machine.Extractor)mineCount++;
+    if(state.cells[i]===Machine.Restorer&&
+      neighbors(i).some(n=>links[n]&&state.cells[n]===Machine.Generator))boost=true;
+  }
+  if(!boost)return 0;
+  if(mineCount<2)return 1;
+  if(state.cells.filter((type,index)=>type===Machine.Relay&&links[index]).length<2)return 2;
+  if(state.cells.filter((type,index)=>type===Machine.Restorer&&links[index]).length<2)return 3;
+  return 4;
+}
+function tutorialStage(){
+  const buildStage=tutorialBuildStage();
+  if(buildStage<4)return buildStage;
+  return state.region>tutorialInitialRegion?5:4;
+}
+function legalTutorialTiles(machine){
+  if(state.scrap<PRICE[machine])return [];
+  const targets=[];
+  for(let index=0;index<state.cells.length;index++)if(state.cells[index]===Machine.Empty){
+    const cells=state.cells.slice();cells[index]=machine;
+    const trial={...state,cells},links=connected(trial);
+    if(!links[index])continue;
+    if(machine===Machine.Generator&&!neighbors(index).some(n=>cells[n]===Machine.Restorer&&links[n]))continue;
+    targets.push(index);
+  }
+  return targets;
+}
+function tutorialBlocker(machine,targets,r){
+  if(state.scrap<PRICE[machine]){
+    if(r.mined<=0)
+      return " No connected MINE produces scrap. Reconnect one or replay in practice; skip keeps this world unchanged.";
+    if(!isReady(state)&&r.mined<=r.used)
+      return " Scrap cannot grow: connected MINE output does not cover LIFE use. Connect more MINE or reduce LIFE demand; replay in practice if stuck.";
+    return " Wait for connected MINE production: this costs "+PRICE[machine]+" scrap; you have "+Math.floor(state.scrap)+".";
+  }
+  return targets.length===0?
+    " No connected empty tile is available. Clear a route only if you choose, or skip the walkthrough.":"";
+}
+function clearTutorialHighlights(){
+  document.querySelectorAll(".tutorial-highlight").forEach(el=>el.classList.remove("tutorial-highlight"));
+}
+function finishWalkthrough(){
+  tutorialActive=false;tutorialFinished=true;
+  if(!practiceMode)writeTutorialRecord({active:false,complete:true,mode:"live",initialRegion:tutorialInitialRegion});
+}
+function renderTutorial(){
+  const why=$("tutorial-why"),controls=$("tutorial-controls"),skip=$("tutorial-skip"),leave=$("tutorial-return"),done=$("tutorial-done"),modeLabel=$("tutorial-mode-label");
+  if(!tutorialActive&&!tutorialFinished){
+    clearTutorialHighlights();lastTutorialStage=-1;
+    controls.hidden=true;
+    why.hidden=true;skip.hidden=true;leave.hidden=true;done.hidden=true;modeLabel.hidden=true;
+    setTextIfChanged($("mission-eyebrow"),"YOUR NEXT MOVE");
+    return;
+  }
+  const stage=tutorialActive?tutorialStage():5;
+  if(!Number.isInteger(stage)||stage<0||stage>5){
+    if(tutorialActive)finishWalkthrough();
+    return renderTutorial();
+  }
+  const stageChanged=stage!==lastTutorialStage;
+  if(stageChanged){clearTutorialHighlights();lastTutorialStage=stage;}
+  const steps=[...$("mission-stages").children];
+  steps.forEach((dot,index)=>dot.className=index<stage?"done":index===stage&&stage<5?"active":"");
+  if(stage>=5){
+    if(tutorialActive)finishWalkthrough();
+    setTextIfChanged($("mission-eyebrow"),"WALKTHROUGH COMPLETE");
+    setTextIfChanged($("mission-number"),"✓");
+    setTextIfChanged($("mission-title"),"You brought a region back to life.");
+    setTextIfChanged($("mission-description"),"Your normal claim reward is shown in the recap. Your saved world stays separate from practice.");
+    controls.hidden=false;why.hidden=true;skip.hidden=true;leave.hidden=!practiceMode;done.hidden=practiceMode;
+    modeLabel.hidden=!practiceMode;
+    if(practiceMode)modeLabel.textContent="Temporary practice · nothing transfers to your saved world.";
+    if(window.matchMedia("(max-width: 650px)").matches)
+      mobileFeedback(practiceMode?"Walkthrough complete · return to your saved world.":"Walkthrough complete · see the reward recap below.");
+    return;
+  }
+  const entry=walkthroughStages[stage];
+  if(!entry){
+    if(tutorialActive)finishWalkthrough();
+    return renderTutorial();
+  }
+  setTextIfChanged($("mission-eyebrow"),"GUIDED WALKTHROUGH · "+(stage+1)+" / 5");
+  setTextIfChanged($("mission-number"),String(stage+1).padStart(2,"0"));
+  const r=rates(state);
+  let copy=entry.copy;
+  const machine=[Machine.Generator,Machine.Extractor,Machine.Relay,Machine.Restorer][stage];
+  const targets=stage<4?legalTutorialTiles(machine):[];
+  if(stage<4&&targets.length===0)copy+=tutorialBlocker(machine,targets,r);
+  if(stage===4&&isReady(state))copy="The region is ready. Activate AWAKEN REGION beside the recovery meter.";
+  setTextIfChanged($("mission-title"),stage===4&&!isReady(state)?"Restore the region to its target":entry.title);
+  setTextIfChanged($("mission-description"),copy);
+  setTextIfChanged(why,stage===3?entry.why+" Current network: "+r.consumers+" consumers / "+r.capacity+" capacity; output "+Math.round(r.fraction*100)+"%.":entry.why);
+  why.hidden=false;
+  controls.hidden=false;skip.hidden=practiceMode;leave.hidden=!practiceMode;done.hidden=true;
+  modeLabel.hidden=!practiceMode;
+  if(practiceMode)modeLabel.textContent="Temporary practice · reload returns to your saved world.";
+  if(window.matchMedia("(max-width: 650px)").matches){
+    const mobileSteps=[
+      "1/5 · Add POWER by LIFE: it boosts recovery and adds capacity.",
+      "2/5 · Add MINE: scrap builds machines and fuels LIFE.",
+      "3/5 · Extend RELAY: it carries energy across the grid.",
+      "4/5 · Add LIFE: it spends scrap and uses network capacity."
+    ];
+    let mobileCopy=stage===4?
+      (isReady(state)?"5/5 · Region ready. Tap AWAKEN to claim once.":"5/5 · Grow recovery to the target, then AWAKEN."):
+      "Walkthrough "+mobileSteps[stage];
+    if(stage<4&&targets.length===0)mobileCopy+=tutorialBlocker(machine,targets,r);
+    mobileFeedback(mobileCopy);
+  }
+  let firstTarget=null;
+  if(stage<4){
+    document.querySelectorAll(".quick-tool,.tool").forEach(el=>{
+      if(Number(el.dataset.machine)===machine)el.classList.add("tutorial-highlight");
+    });
+    // Keep one legal recommendation visually clear. Every other valid tile
+    // remains playable, and the suggestion is recalculated after each action.
+    const hint=suggested(state);
+    const target=targets.includes(hint)?hint:targets[0];
+    if(target!==undefined){
+      firstTarget=document.querySelector(`[data-index="${target}"]`);
+      firstTarget?.classList.add("tutorial-highlight");
+    }
+    if(targets.length===0&&state.scrap<PRICE[machine]){
+      $("scrap").classList.add("tutorial-highlight");
+      $("mining-rate").classList.add("tutorial-highlight");
+    }
+    if(stage===3){$("power-note").classList.add("tutorial-highlight");$("recovery-rate").classList.add("tutorial-highlight");}
+  }else if(isReady(state)){firstTarget=$("revive");firstTarget.classList.add("tutorial-highlight");}
+  else{firstTarget=$("recovery-progress");firstTarget.classList.add("tutorial-highlight");}
+  if(stageChanged&&window.matchMedia("(max-width: 650px)").matches){
+    const target=firstTarget||document.querySelector(`.quick-tool[data-machine="${machine}"]`);
+    const instruction=$("mobile-feedback"),rect=target?.getBoundingClientRect();
+    if(rect&&(rect.top<0||rect.bottom>innerHeight))
+      instruction.scrollIntoView({behavior:"instant",block:"start",inline:"nearest"});
+  }
+}
+function startWalkthrough(){
+  if(tutorialActive){closeGuide(true);render(true);return;}
+  const savedTutorialFinished=tutorialFinished;
+  tutorialFinished=false;
+  if(allowFirstTutorialStart){
+    tutorialActive=true;
+    tutorialInitialRegion=state.region;
+    writeTutorialRecord({active:true,complete:false,mode:"live",initialRegion:tutorialInitialRegion});
+    allowFirstTutorialStart=false;
+  }else{
+    state.savedAt=now();
+    practiceReturn={state,tutorialRecord,tutorialActive,tutorialFinished:savedTutorialFinished,tutorialInitialRegion,lastVerifiedSave,storageUnavailable,saveWriteProtected};
+    practiceMode=true;tutorialActive=true;state=fresh();selected=Machine.Generator;
+    tutorialInitialRegion=state.region;
+  }
+  closeGuide(true);render(true);
+  const firstControl=[...document.querySelectorAll(".tutorial-highlight")].find(el=>el.getClientRects().length>0);
+  firstControl?.focus({preventScroll:true});
+  if(window.matchMedia("(max-width: 650px)").matches)
+    $("mobile-feedback").scrollIntoView({behavior:"instant",block:"start",inline:"nearest"});
+}
+function skipWalkthrough(){
+  if(practiceMode){returnToSavedWorld();return;}
+  tutorialActive=false;tutorialFinished=false;
+  writeTutorialRecord({active:false,complete:false,mode:"live",initialRegion:tutorialInitialRegion});
+  render(true);
+}
+function returnToSavedWorld(event){
+  if(!practiceMode||!practiceReturn)return;
+  const saved=practiceReturn;
+  practiceMode=false;state=saved.state;selected=Machine.Generator;
+  tutorialRecord=saved.tutorialRecord;tutorialActive=saved.tutorialActive;tutorialFinished=saved.tutorialFinished;tutorialInitialRegion=saved.tutorialInitialRegion;
+  lastVerifiedSave=saved.lastVerifiedSave;storageUnavailable=saved.storageUnavailable;saveWriteProtected=saved.saveWriteProtected;
+  practiceReturn=null;
+  const returned=applyOfflineProgress(now());
+  render(true);persist();
+  if(returned.appliedSeconds>2)showOfflineRecap(returned);
+  if(event?.detail===0)$("how-to-play").focus({preventScroll:true});
+}
 function persist(){
+  if(practiceMode)return;
   state.savedAt=now();
   if(saveWriteProtected)return;
   const serialized=JSON.stringify(state);
@@ -179,11 +452,14 @@ function notice(message,warning=false){
   el.classList.add("visible");
   // On small screens the fixed toast is hidden, and a reserved feedback line
   // beside the toolbelt provides the same message without covering content.
-  mobileFeedback(message,warning);
+  // Successful guided actions advance the stage; keep that instruction as the
+  // sole live update instead of briefly announcing the generic toast as well.
+  if((!tutorialActive&&!tutorialFinished)||warning)mobileFeedback(message,warning);
   clearTimeout(toastTimeout);
   toastTimeout=setTimeout(()=>{
     el.classList.remove("visible");
-    mobileFeedback($("selected-tool-text")?.textContent||"Choose a tool and tap an empty square.");
+    if(tutorialActive||tutorialFinished)renderTutorial();
+    else mobileFeedback($("selected-tool-text")?.textContent||"Choose a tool and tap an empty square.");
   },3500);
 }
 const tiles=[];
@@ -194,7 +470,7 @@ for(let i=0;i<25;i++){
   const label=document.createElement("span");label.className="tile-name";
   const status=document.createElement("span");status.className="tile-status";status.setAttribute("aria-hidden","true");
   btn.append(symbol,label,status);
-  btn.addEventListener("click",()=>tap(i));
+  btn.addEventListener("click",event=>tap(i,event));
   $("tiles").append(btn);tiles.push({btn,symbol,label});
 }
 function choose(machine,manual=true){
@@ -218,10 +494,17 @@ function choose(machine,manual=true){
       words[selected]+" selected. Now tap an empty square.");
 }
 document.querySelectorAll(".tool, .quick-tool").forEach(el=>el.addEventListener("click",()=>choose(Number(el.dataset.machine))));
-function tap(index){
+function tap(index,event){
+  const previousTutorialStage=tutorialActive?tutorialStage():-1;
   const result=place(state,index,selected);
   notice(result.message,!result.ok);
-  if(result.ok){persist();render(true);}
+  if(result.ok){
+    persist();render(true);
+    if(event?.detail===0&&tutorialActive&&tutorialStage()!==previousTutorialStage){
+      const next=[...document.querySelectorAll(".tutorial-highlight")].find(el=>el.getClientRects().length>0);
+      next?.focus({preventScroll:true});
+    }
+  }
 }
 $("upgrade-mining").addEventListener("click",()=>{
   const r=upgrade(state,true);notice(r.message,!r.ok);if(r.ok){persist();render(true);}
@@ -230,45 +513,58 @@ $("upgrade-power").addEventListener("click",()=>{
   const r=upgrade(state,false);notice(r.message,!r.ok);if(r.ok){persist();render(true);}
 });
 $("revive").addEventListener("click",event=>{
+  const previousScrap=state.scrap;
   const r=claim(state);
-  notice(r.message,!r.ok);
+  if(!r.ok)notice(r.message,true);
   if(r.ok){
     persist();render(true);
+    showClaimRecap(state.scrap-previousScrap);
     if(event.detail===0)$("region-state").focus({preventScroll:true});
   }
 });
+$("dismiss-recap").addEventListener("click",()=>{$("progress-recap").hidden=true;});
 $("repair").addEventListener("click",()=>{
   if(!window.confirm("Reset the network to its starting layout? Structures will not be refunded. Region and upgrades stay saved."))return;
   const r=resetGrid(state);notice(r.message);persist();render(true);
 });
 const welcome=$("welcome");
 function openGuide(){
+  $("begin-label").textContent=tutorialActive?"RESUME WALKTHROUGH":allowFirstTutorialStart?"START GUIDED WALKTHROUGH":"REPLAY IN PRACTICE WORLD";
+  $("welcome-copy").textContent=tutorialActive?
+    "Your walkthrough resumes from the actual machines and progress in this saved world.":
+    allowFirstTutorialStart?
+      "Follow five goals on the real grid. Each completes only after the connected machines or recovery meet its goal.":
+      "Replay with a temporary practice network. Practice changes never transfer; reloading or choosing Return brings you back to your saved world.";
   if(typeof welcome.showModal==="function"&&!welcome.open)welcome.showModal();
   else welcome.setAttribute("open","");
 }
 function closeGuide(startPlaying=false){
   storageSetFirst("yes");
+  firstPreference="yes";
+  if(!startPlaying&&!tutorialActive)allowFirstTutorialStart=false;
   if(typeof welcome.close==="function"&&welcome.open)welcome.close();
   else welcome.removeAttribute("open");
   // The visual planet intro is tall on a phone. After onboarding, bring the
   // grid-local recovery status into view with the board just below it. This
   // affects navigation only, never the saved world.
   if(startPlaying){
-    const reducedMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const firstPlayTarget=window.matchMedia("(max-width: 650px)").matches?
       document.querySelector("#mobile-feedback"):
       document.querySelector(".network-card");
     firstPlayTarget?.scrollIntoView({
-      behavior:reducedMotion?"instant":"smooth",block:"start"
+      behavior:"instant",block:"start"
     });
   }
 }
 $("how-to-play").addEventListener("click",openGuide);
-$("begin").addEventListener("click",()=>closeGuide(true));
+$("begin").addEventListener("click",startWalkthrough);
 $("dismiss-help").addEventListener("click",()=>closeGuide(false));
-welcome.addEventListener("cancel",()=>storageSetFirst("yes"));
-if(!storageGetFirst())openGuide();
-if(away>2)notice("Welcome back! Your network worked for "+Math.floor(away/60)+" offline minutes.");
+$("tutorial-skip").addEventListener("click",skipWalkthrough);
+$("tutorial-return").addEventListener("click",returnToSavedWorld);
+$("tutorial-done").addEventListener("click",()=>{tutorialFinished=false;render(true);});
+welcome.addEventListener("cancel",()=>{storageSetFirst("yes");firstPreference="yes";if(!tutorialActive)allowFirstTutorialStart=false;});
+if(!firstPreference)openGuide();
+if(away>2){notice("Offline progress applied.");showOfflineRecap(offlineResult);}
 function render(force=false){
   if(!valid(state)){console.error("Invalid world, resetting safely");state=fresh();persist();}
   const r=rates(state),m=mission(state),ready=isReady(state),percentage=Math.min(100,100*state.restoration/TARGET(state.region));
@@ -322,10 +618,12 @@ function render(force=false){
   else if(m>=2)
     $("selected-tool-text").textContent=selected===Machine.Empty?
       "REMOVE selected · tap a structure":words[selected]+" selected · tap an empty square";
-  $("mission-number").textContent=String(Math.min(m+1,4)).padStart(2,"0");
-  $("mission-title").textContent=ready?"The world is ready. Awaken it!":stepTitles[m];
-  $("mission-description").textContent=ready?"Tap the glowing AWAKEN REGION button by the grid. No ads, no payment—this is your reward.":stepDescriptions[m];
-  [...$("mission-stages").children].forEach((child,i)=>{child.className=i<m?"done":i===m?"active":"";});
+  if(!tutorialActive&&!tutorialFinished){
+    setTextIfChanged($("mission-number"),String(Math.min(m+1,4)).padStart(2,"0"));
+    setTextIfChanged($("mission-title"),ready?"The world is ready. Awaken it!":stepTitles[m]);
+    setTextIfChanged($("mission-description"),ready?"Tap the glowing AWAKEN REGION button by the grid. No ads, no payment—this is your reward.":stepDescriptions[m]);
+    [...$("mission-stages").children].forEach((child,i)=>{const next=i<m?"done":i===m?"active":"";if(child.className!==next)child.className=next;});
+  }
   const hint=suggested(state),cellKey=state.cells.join(",")+"|"+hint+"|"+(state.scrap>0?"fuel":"empty")+"|"+r.fraction;
   if(force||cellKey!==lastCells){
     lastCells=cellKey;
@@ -379,8 +677,9 @@ function render(force=false){
     planetRecovery>=.2?"ATMOSPHERE: RECOVERING":"ATMOSPHERE: DORMANT";
   $("planet-tag").lastChild.textContent=ready?" READY TO AWAKEN":" RESTORATION ACTIVE";
   $("planet-name").textContent=["AURORA-9","SOLACE","VERDANT","HOLLOW SKY","ECHO PRIME","NEW DAWN"][planetIndex%6];
-  if(!$("toast").classList.contains("visible"))
+  if(!$("toast").classList.contains("visible")&&!tutorialActive&&!tutorialFinished)
     mobileFeedback($("selected-tool-text").textContent);
+  renderTutorial();
 }
 function lerp(a,b,t){return a+(b-a)*t;}
 function rgba(c,a=1){return "rgba("+c.map(v=>Math.round(v)).join(",")+","+a+")";}
@@ -478,6 +777,12 @@ function frame(ts){
 requestAnimationFrame(frame);
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="hidden")persist();
-  else{const elapsed=offline(state,now());if(elapsed>3)notice("Welcome back. Your machines worked offline.");render(true);lastFrame=0;}
+  else{
+    if(!practiceMode){
+      const returned=applyOfflineProgress(now());
+      if(returned.appliedSeconds>3){notice("Offline progress applied.");showOfflineRecap(returned);}
+    }
+    render(true);lastFrame=0;
+  }
 });
 window.addEventListener("pagehide",persist);

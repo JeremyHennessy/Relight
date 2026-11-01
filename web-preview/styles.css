@@ -84,3 +84,22 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
 .tile.state-throttled .tile-status{color:#b2deff;border:1px double #78a9c9}
 .machine-readout{margin:10px 0 0;padding:9px 11px;border:1px solid #2d4c5b;border-radius:9px;background:rgba(8,21,33,.58);color:#b8d5dc;font-size:11px;line-height:1.45;overflow-wrap:anywhere}
 @media(prefers-reduced-motion:reduce){.wire-live{animation:none!important;stroke-dasharray:none!important;opacity:.58}}
+.progress-recap{display:flex;align-items:flex-start;gap:10px;margin:10px 0 2px;padding:10px 11px;border:1px solid rgba(120,214,195,.24);border-radius:10px;background:rgba(14,34,45,.78);color:#c6dfdf}
+.progress-recap[hidden]{display:none}
+.recap-copy{min-width:0;flex:1}
+.recap-copy h3{margin:0 0 4px;color:#b9f6dd;font-size:11px;line-height:1.4}
+.recap-copy p{margin:3px 0;font-size:10px;line-height:1.45;overflow-wrap:anywhere}
+.recap-copy .recap-caps{color:#9bb6c0}
+.recap-dismiss{flex:0 0 44px;min-width:44px;min-height:44px;border:1px solid rgba(145,190,207,.22);border-radius:8px;background:#162d40;color:#d8eced;font-size:22px;line-height:1}
+.recap-dismiss:focus-visible{outline:2px solid var(--aqua);outline-offset:2px}
+@media(max-width:650px){.progress-recap{margin:9px 0 0;padding:8px 9px}.recap-copy p{font-size:10px}.recap-dismiss{min-width:44px;min-height:44px}}
+.tutorial-why{margin:7px 0 0;padding-left:9px;border-left:2px solid var(--aqua);color:#b3d8d3;font-size:11px;line-height:1.5}
+.tutorial-controls{display:flex;align-items:center;justify-content:flex-start;gap:9px;flex-wrap:wrap;margin-top:5px}
+.tutorial-controls[hidden]{display:none}
+.tutorial-why[hidden],.tutorial-control[hidden],#tutorial-mode-label[hidden]{display:none}
+.tutorial-control{min-height:40px;margin:0;padding:7px 9px;border:1px solid rgba(145,190,207,.24);border-radius:7px;color:#b8d5dc;background:#13273a;font-size:10px}
+#tutorial-mode-label{color:#90b2bc;font-size:9px;line-height:1.4}
+.tutorial-highlight{position:relative!important;z-index:4!important;outline:2px solid var(--aqua)!important;outline-offset:3px!important;box-shadow:0 0 0 5px rgba(131,242,219,.16)!important}
+.tile.tutorial-highlight{z-index:6!important}
+@media(prefers-reduced-motion:reduce){.tutorial-highlight{animation:none!important;transition:none!important}}
+@media(max-width:650px){.tutorial-controls{gap:5px}.tutorial-control{min-height:44px}.mission-banner{align-items:start}}

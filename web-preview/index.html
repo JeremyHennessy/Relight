@@ -53,8 +53,8 @@
 
   <section class="mission-banner" aria-label="Current guided objective">
     <div class="mission-number"><span>FIELD<br>DIRECTIVE</span><strong id="mission-number">01</strong></div>
-    <div class="mission-copy"><div class="eyebrow mission-eyebrow">YOUR NEXT MOVE</div><h2 id="mission-title">Give the life engine a boost.</h2><p id="mission-description">The starter network is live. Select <b>POWER</b> below, then tap the glowing tile beside the green LIFE machine.</p></div>
-    <div class="mission-progress" id="mission-stages" aria-label="Mission progress"><span class="active"></span><span></span><span></span></div>
+    <div class="mission-copy"><div class="eyebrow mission-eyebrow" id="mission-eyebrow">YOUR NEXT MOVE</div><h2 id="mission-title" aria-live="polite" aria-atomic="true">Give the life engine a boost.</h2><p id="mission-description">The starter network is live. Select <b>POWER</b> below, then tap the glowing tile beside the green LIFE machine.</p><p id="tutorial-why" class="tutorial-why" hidden></p></div>
+    <div class="mission-progress" id="mission-stages" aria-label="Walkthrough progress"><span></span><span></span><span></span><span></span><span></span></div>
   </section>
 
   <section class="workshop" aria-label="Network construction and upgrades">
@@ -72,6 +72,7 @@
         <button type="button" class="quick-tool" data-machine="0" aria-pressed="false" aria-label="Remove a structure"><strong aria-hidden="true">×</strong><span>REMOVE</span><small>FREE</small></button>
       </div>
       <p class="machine-readout" id="machine-readout" role="status" aria-live="polite" aria-atomic="true">POWER · select a machine to inspect its network status.</p>
+      <div class="tutorial-controls" id="tutorial-controls" hidden><span id="tutorial-mode-label" hidden></span><button id="tutorial-skip" class="quiet-button tutorial-control" type="button" hidden>Skip walkthrough</button><button id="tutorial-return" class="quiet-button tutorial-control" type="button" hidden>Return to your saved world</button><button id="tutorial-done" class="quiet-button tutorial-control" type="button" hidden>Continue playing</button></div>
       <div class="board-recovery" role="group" aria-label="Region recovery status">
         <div class="progress-block">
           <div class="progress-heading"><span>BIOSPHERE RECOVERY</span><strong id="restored-percent">0%</strong></div>
@@ -81,6 +82,12 @@
         <button id="revive" class="revive-button" hidden disabled type="button" aria-describedby="revive-hint"><span class="button-star" aria-hidden="true">✦</span><span id="revive-label">AWAKEN REGION</span><span aria-hidden="true" class="revive-arrow">↗</span></button>
         <div class="revive-hint" id="revive-hint" hidden>The region is ready. Awaken it for free and uncover more of the planet.</div>
       </div>
+      <section id="progress-recap" class="progress-recap" aria-label="Progress recap" hidden>
+        <div class="recap-copy"><h3 id="recap-title" aria-live="polite"></h3><div id="recap-details"></div>
+          <p id="recap-caps" class="recap-caps" hidden>Offline progress is capped at 8 hours; scrap mining is capped at 30 minutes.</p>
+        </div>
+        <button id="dismiss-recap" class="recap-dismiss" type="button" aria-label="Dismiss progress recap">×</button>
+      </section>
       <div class="board-wrap"><div class="network-board" id="network-board">
         <svg class="network-lines" id="network-lines" viewBox="0 0 500 500" preserveAspectRatio="none" aria-hidden="true"></svg>
         <div id="tiles" class="tiles" role="group" aria-label="Place machines on the 5 by 5 energy grid"></div>
@@ -115,14 +122,14 @@
   <div class="dialog-content">
     <div class="dialog-mark">✦</div><div class="eyebrow">WELCOME TO RELIGHT</div>
     <h2 id="welcome-title">One spark can bring a world back.</h2>
-    <p>You inherit a damaged energy network. Your job is simple: <b>power the life engines</b>, mine scrap to expand, and bring the planet back to life.</p>
+    <p id="welcome-copy">You inherit a damaged energy network. Your job is simple: <b>connect machines</b>, mine scrap, keep LIFE fueled and bring the planet back to life.</p>
     <div class="guide-steps">
-      <div><span>01</span><strong>Choose POWER</strong><small>Your first tool is already selected.</small></div>
-      <div><span>02</span><strong>Tap the glowing square</strong><small>Build beside the green life engine.</small></div>
-      <div><span>03</span><strong>Watch the world recover</strong><small>Follow the next directive, then awaken the region.</small></div>
+      <div><span>01</span><strong>Connect POWER</strong><small>Capacity and adjacency help LIFE work.</small></div>
+      <div><span>02</span><strong>Grow scrap and relay reach</strong><small>MINE funds growth; RELAY extends energy.</small></div>
+      <div><span>03</span><strong>Fuel LIFE, then awaken</strong><small>Build a second LIFE and claim only when ready.</small></div>
     </div>
-    <button class="start-button" id="begin" type="button">LET'S RESTORE THIS WORLD <span>↗</span></button>
-    <button id="dismiss-help" class="quiet-button" type="button">Close guide</button>
+    <button class="start-button" id="begin" type="button"><span id="begin-label">START GUIDED WALKTHROUGH</span><span aria-hidden="true">↗</span></button>
+    <button id="dismiss-help" class="quiet-button" type="button">Explore without walkthrough</button>
   </div>
 </dialog>
 <script type="module" src="./app.mjs"></script>

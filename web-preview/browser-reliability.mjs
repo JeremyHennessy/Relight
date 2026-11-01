@@ -3,11 +3,12 @@
 // reconstructed or claimed to be identical.
 import assert from "node:assert/strict";
 import {chromium} from "playwright";
-import {fresh,Machine,MINING_OFFLINE,advance,rates,estimateRecoverySeconds} from "./model.mjs";
+import {fresh,Machine,MAX_OFFLINE,MINING_OFFLINE,advance,rates,estimateRecoverySeconds} from "./model.mjs";
 
 const origin=process.env.RELIGHT_BROWSER_URL||"http://127.0.0.1:8765";
 const saveKey="relight.webplaytest.v1";
 const firstKey="relight.webplaytest.onboarded.v1";
+const tutorialKey="relight.webplaytest.tutorial.v1";
 const executablePath=process.env.RELIGHT_CHROMIUM_EXECUTABLE_PATH||undefined;
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"],executablePath});
 let passed=0;
@@ -121,7 +122,7 @@ async function withPage({width=390,height=844,initial={},config={}},run){
 
 async function closeGuide(page){
   if(await page.locator("#welcome").evaluate(element=>element.open))
-    await page.locator("#begin").click({timeout:5000});
+    await page.locator("#dismiss-help").click({timeout:5000});
 }
 async function build(page,machine,index){
   await closeGuide(page);
@@ -160,6 +161,15 @@ async function runAutosaveTicks(page,count=40){
     return executed;
   },count);
   assert.ok(ran>=count-1,`only ${ran}/${count} animation frames ran`);
+}
+async function buildGuidedNetwork(page){
+  await build(page,Machine.Generator,19);
+  await build(page,Machine.Extractor,7);
+  await runAutosaveTicks(page,40);
+  await build(page,Machine.Relay,8);
+  await runAutosaveTicks(page,40);
+  await build(page,Machine.Restorer,9);
+  await runAutosaveTicks(page,280);
 }
 async function check(name,fn){
   await fn();passed++;console.log("PASS browser reliability:",name);
@@ -319,7 +329,7 @@ try{
     },async page=>{
       assert.equal(await page.locator("#welcome").evaluate(el=>el.open),true,"guide remains available");
       assert.equal((await status(page)).hidden,true,"tutorial-only storage trouble is not a save warning");
-      await page.locator("#begin").click();
+      await page.locator("#dismiss-help").click();
       await build(page,Machine.Generator,19);
       const persisted=JSON.parse(await raw(page));
       assert.equal(persisted.cells[19],Machine.Generator);
@@ -333,6 +343,341 @@ try{
       assert.equal((await status(page)).hidden,true);
     }));
   }
+
+  await check("walkthrough reacts to different moves, prerequisite removal, low funds, and a full grid",async()=>{
+    const started={active:true,complete:false,mode:"live",initialRegion:0};
+    await withPage({initial:{[saveKey]:savedWorld({scrap:60}),[firstKey]:"yes",[tutorialKey]:JSON.stringify(started)}},async page=>{
+      assert.match(await page.locator("#mission-title").textContent(),/Connect POWER/);
+      await build(page,Machine.Extractor,19);
+      assert.equal(JSON.parse(await raw(page)).cells[19],Machine.Extractor,
+        "an alternative build is preserved instead of being cleared");
+      assert.match(await page.locator("#mission-title").textContent(),/Connect POWER/,
+        "a different build does not pretend the powered-LIFE goal is complete");
+      assert.ok(await page.locator(".tile.tutorial-highlight").count()>0,
+        "legal target is recomputed after the suggested cell becomes occupied");
+      await build(page,Machine.Generator,9);
+      assert.match(await page.locator("#mission-title").textContent(),/Extend the relay path/,
+        "an already completed second-mine condition is skipped from actual state");
+      await remove(page,9);
+      assert.match(await page.locator("#mission-title").textContent(),/Connect POWER/,
+        "removing a required generator regresses guidance to the unmet model condition");
+    });
+
+    const noFunds=fresh();noFunds.scrap=0;noFunds.savedAt=Math.floor(Date.now()/1000);
+    await withPage({initial:{[saveKey]:JSON.stringify(noFunds),[firstKey]:"yes",[tutorialKey]:JSON.stringify(started)}},async page=>{
+      assert.match(await page.locator("#mission-description").textContent(),/Wait for connected MINE production/);
+      assert.equal(await page.locator(".tile.tutorial-highlight").count(),0,
+        "unaffordable placements are not presented as legal targets");
+      assert.equal(await page.locator("#scrap").evaluate(el=>el.classList.contains("tutorial-highlight")),true);
+    });
+
+    const fullCells=Array(25).fill(Machine.Relay);fullCells[12]=Machine.Core;fullCells[14]=Machine.Restorer;
+    await withPage({initial:{[saveKey]:savedWorld({cells:fullCells,scrap:60}),[firstKey]:"yes",[tutorialKey]:JSON.stringify(started)}},async page=>{
+      assert.match(await page.locator("#mission-description").textContent(),/No connected empty tile is available/);
+      assert.equal(await page.locator(".tile.tutorial-highlight").count(),0,
+        "a full board receives no fabricated target");
+      assert.equal(await page.locator("#tutorial-skip").isVisible(),true,
+        "the player can skip rather than being forced to remove a structure");
+    });
+  });
+
+  await check("tutorial metadata must be a complete valid live record",()=>withPage({
+    initial:{
+      [saveKey]:savedWorld({scrap:77,region:2}),
+      [firstKey]:"yes",
+      [tutorialKey]:JSON.stringify({active:true,complete:true,mode:"live",initialRegion:-1})
+    }
+  },async page=>{
+    assert.equal(await page.locator("#tutorial-skip").isVisible(),false,
+      "contradictory or negative tutorial metadata cannot activate a walkthrough");
+    assert.equal(await page.locator("#tutorial-return").isVisible(),false);
+    const saved=JSON.parse(await raw(page));
+    assert.equal(saved.region,2);assert.ok(saved.scrap>=77&&saved.scrap<78,
+      "the existing world remains loaded; only normal startup mining may add fractional scrap");
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.tutorial.v1")).initialRegion),-1,
+      "invalid tutorial metadata is ignored without rewriting the existing record");
+  }));
+
+  await check("unaffordable guidance detects missing or disconnected scrap production",()=>withPage({
+    width:320,height:640,initial:{
+      [firstKey]:"yes",
+      [tutorialKey]:JSON.stringify({active:true,complete:false,mode:"live",initialRegion:0})
+    }
+  },async page=>{
+    const empty=fresh();empty.cells[11]=Machine.Empty;empty.scrap=0;
+    const disconnected=fresh();disconnected.cells[11]=Machine.Empty;disconnected.cells[0]=Machine.Extractor;disconnected.scrap=0;
+    for(const world of [empty,disconnected]){
+      await page.evaluate(value=>window.__relightTest.setRaw("relight.webplaytest.v1",value),JSON.stringify(world));
+      await page.evaluate(()=>window.location.reload());
+      await page.waitForFunction(()=>document.querySelector("#tutorial-skip")?.hidden===false);
+      assert.match(await page.locator("#mission-description").textContent(),/No connected MINE produces scrap/);
+      assert.doesNotMatch(await page.locator("#mission-description").textContent(),/Wait for MINE production/);
+      assert.match(await page.locator("#mobile-feedback").textContent(),/Reconnect one or replay in practice/);
+      assert.equal(await page.locator("#welcome").evaluate(el=>el.open),false,
+        "the blocked lesson offers a safe recovery path without resetting the world");
+    }
+    const ready=fresh();ready.cells[9]=Machine.Restorer;ready.scrap=0;ready.restoration=100;ready.savedAt=Math.floor(Date.now()/1000);
+    await page.evaluate(value=>window.__relightTest.setRaw("relight.webplaytest.v1",value),JSON.stringify(ready));
+    await page.evaluate(()=>window.location.reload());
+    await page.waitForFunction(()=>document.querySelector("#tutorial-skip")?.hidden===false);
+    assert.ok((await page.locator("#power-note").textContent()).includes("All placed machines are connected."));
+    assert.match(await page.locator("#mission-description").textContent(),/Wait for connected MINE production/,
+      "a ready region does not imply LIFE is consuming fuel while it earns scrap");
+    assert.doesNotMatch(await page.locator("#mission-description").textContent(),/Scrap cannot grow/,
+      "ready-world mining is reported as positive income despite LIFE demand");
+  }));
+
+  await check("skip and reopening the guide leave the live world unchanged",()=>withPage({},async page=>{
+    await page.locator("#begin").click();
+    const saved=await raw(page);
+    const before=JSON.parse(saved);
+    await page.locator("#tutorial-skip").click();
+    assert.equal(await raw(page),saved,"skipping changes only tutorial preference, not world SAVE");
+    await page.locator("#how-to-play").click();
+    assert.match(await page.locator("#welcome-copy").textContent(),/temporary practice network/);
+    await page.locator("#dismiss-help").click();
+    const after=JSON.parse(await raw(page));
+    assert.equal(after.scrap,before.scrap);assert.deepEqual(after.cells,before.cells);
+  }));
+
+  await check("Escape dismisses onboarding without changing progress and replay stays isolated",()=>withPage({},async page=>{
+    const saved=await raw(page);
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#welcome").evaluate(el=>el.open),false,
+      "keyboard Escape dismisses the native welcome dialog");
+    assert.equal(await raw(page),saved,"dismissing onboarding does not alter the world save");
+    await page.locator("#how-to-play").click();
+    await page.locator("#begin").click();
+    assert.equal(await page.locator("#tutorial-return").isVisible(),true,
+      "replay after Escape is visibly marked as temporary practice");
+    assert.match(await page.locator("#tutorial-mode-label").textContent(),/Temporary practice/);
+    assert.equal(await raw(page),saved,"starting replay after Escape preserves the saved world bytes");
+  }));
+
+  await check("an early normal claim cannot mark unfinished construction lessons complete",()=>{
+    const early=fresh();early.scrap=30;early.restoration=100;early.savedAt=Math.floor(Date.now()/1000);
+    return withPage({initial:{
+      [saveKey]:JSON.stringify(early),[firstKey]:"yes",
+      [tutorialKey]:JSON.stringify({active:true,complete:false,mode:"live",initialRegion:0})
+    }},async page=>{
+      assert.equal(await page.locator("#revive").isVisible(),true,"existing claim remains available when ready");
+      await page.locator("#revive").click();
+      assert.equal(JSON.parse(await raw(page)).region,1,"early claim still grants the normal region advance");
+      assert.equal(await page.locator("#mission-title").textContent(),"Connect POWER beside LIFE",
+        "region progress cannot skip unbuilt tutorial lessons");
+      assert.equal(await page.locator("#tutorial-done").isVisible(),false,
+        "the walkthrough is not reported complete before its build goals");
+      await build(page,Machine.Generator,9);
+      assert.equal(await page.locator("#mission-title").textContent(),"Grow the scrap supply",
+        "the lesson sequence continues from actual machines after an early claim");
+    });
+  });
+
+  await check("guided live regions stay quiet on stable ticks and announce one stage change",()=>withPage({
+    width:390,height:844,initial:{[saveKey]:savedWorld(),[firstKey]:"yes"}
+  },async page=>{
+    await page.locator("#how-to-play").click();
+    await page.locator("#begin").click();
+    await page.evaluate(()=>{
+      const title=document.querySelector("#mission-title");
+      const feedback=document.querySelector("#mobile-feedback");
+      window.__liveMutationCounts={title:0,feedback:0};
+      window.__liveMutationObserver=new MutationObserver(records=>{
+        for(const record of records){
+          if(title.contains(record.target)||record.target===title)window.__liveMutationCounts.title++;
+          if(feedback.contains(record.target)||record.target===feedback)window.__liveMutationCounts.feedback++;
+        }
+      });
+      window.__liveMutationObserver.observe(title,{subtree:true,childList:true,characterData:true});
+      window.__liveMutationObserver.observe(feedback,{subtree:true,childList:true,characterData:true});
+    });
+    await runAutosaveTicks(page,8);
+    await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,0)));
+    assert.deepEqual(await page.evaluate(()=>window.__liveMutationCounts),{title:0,feedback:0},
+      "stable animation ticks produce no redundant mission or mobile live-region mutations");
+
+    await build(page,Machine.Generator,19);
+    await page.evaluate(()=>new Promise(resolve=>setTimeout(resolve,0)));
+    assert.deepEqual(await page.evaluate(()=>window.__liveMutationCounts),{title:1,feedback:1},
+      "one completed goal creates one meaningful title and instruction update");
+    assert.equal(await page.locator("#mission-title").textContent(),"Grow the scrap supply");
+    assert.match(await page.locator("#mobile-feedback").textContent(),/Walkthrough 2\/5/);
+    await page.evaluate(()=>window.__liveMutationObserver.disconnect());
+  }));
+
+  await check("five real tutorial goals follow grid state through reload and one normal claim",()=>withPage({
+    width:320,height:640
+  },async page=>{
+    assert.equal(await page.locator("#welcome").evaluate(el=>el.open),true);
+    await page.locator("#begin").click();
+    assert.equal(await page.locator("#tutorial-why").isVisible(),true);
+    assert.match(await page.locator("#mission-title").textContent(),/Connect POWER/);
+    assert.match(await page.locator("#mobile-feedback").textContent(),/Walkthrough 1\/5.*boosts recovery and adds capacity/,
+      "the phone keeps the current goal and its reason beside the highlighted grid");
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.tutorial.v1")).active),true);
+    assert.equal(await page.locator('.quick-tool[data-machine="5"]').evaluate(el=>el.classList.contains("tutorial-highlight")),true);
+    const target=page.locator(".tile.tutorial-highlight").first();
+    assert.ok(await target.isVisible(),"a legal POWER tile is highlighted on the narrow viewport");
+    const targetBox=await target.boundingBox();
+    assert.ok(targetBox&&targetBox.y>=0&&targetBox.y+targetBox.height<=640,
+      "the current guided tile remains visible at 320×640");
+    const instructionBox=await page.locator("#mobile-feedback").boundingBox();
+    assert.ok(instructionBox&&instructionBox.y>=-1&&instructionBox.y+instructionBox.height<=641,
+      "the phone instruction remains visible with the highlighted tile at 320×640: "+JSON.stringify(instructionBox));
+    const untouched=JSON.parse(await raw(page));
+    await page.locator('.quick-tool[data-machine="3"]').click();
+    assert.match(await page.locator("#mission-title").textContent(),/Connect POWER/,
+      "selecting the wrong tool cannot fake stage completion");
+    assert.deepEqual(JSON.parse(await raw(page)).cells,untouched.cells,
+      "a tool selection alone does not alter the grid");
+
+    await build(page,Machine.Generator,19);
+    assert.match(await page.locator("#mission-title").textContent(),/Grow the scrap supply/);
+    assert.match(await page.locator("#mobile-feedback").textContent(),/Walkthrough 2\/5/);
+    await page.reload({waitUntil:"networkidle"});
+    assert.match(await page.locator("#mission-title").textContent(),/Grow the scrap supply/,
+      "the live lesson resumes from saved model state after reload");
+    await buildGuidedNetwork(page);
+    assert.equal(await page.locator("#revive").isVisible(),true,
+      "AWAKEN appears only after actual recovery reaches its target");
+    assert.match(await page.locator("#mission-title").textContent(),/Awaken the ready region/);
+    assert.match(await page.locator("#power-note").textContent(),/4 connected consumers, usable capacity 4/,
+      "the second LIFE lesson exposes actual capacity demand");
+    await page.locator("#revive").focus();
+    await page.keyboard.press("Enter");
+    const claimed=JSON.parse(await raw(page));
+    assert.equal(claimed.region,1,"the tutorial ends with the ordinary one-region claim");
+    assert.match(await page.locator("#progress-recap").innerText(),/Claimed \+50\.0 scrap/);
+    assert.equal(await page.evaluate(()=>document.activeElement.id),"region-state",
+      "keyboard claim returns focus to recovery status");
+    await page.evaluate(()=>document.querySelector("#revive").dispatchEvent(new MouseEvent("click",{bubbles:true})));
+    assert.equal(JSON.parse(await raw(page)).region,1,"a hidden repeat cannot grant a second claim");
+    assert.equal(await page.locator("#tutorial-done").isVisible(),true);
+    await page.locator("#how-to-play").click();await page.locator("#begin").click();
+    assert.equal(await page.locator("#tutorial-return").isVisible(),true,
+      "completed walkthrough replay remains a separate practice session");
+    await page.locator("#tutorial-return").click();
+    assert.equal(await page.locator("#tutorial-done").isVisible(),true,
+      "return from practice restores the completed walkthrough state");
+    assert.equal(JSON.parse(await raw(page)).region,1,"practice replay cannot change the completed live region");
+    await page.reload({waitUntil:"networkidle"});
+    const completedReturnVisible=await page.locator("#tutorial-return").isVisible();
+    assert.equal(completedReturnVisible,false,
+      "completed live walkthrough does not restart after reload: "+JSON.stringify(await page.evaluate(()=>({tutorial:localStorage.getItem("relight.webplaytest.tutorial.v1"),returnHidden:document.querySelector("#tutorial-return").hidden,stage:document.querySelector("#mission-title").textContent}))));
+  }));
+
+  await check("practice replay isolates every world write and returns the real saved world",()=>withPage({
+    width:390,height:844,initial:{
+      [saveKey]:savedWorld({cells:Array.from({length:25},(_,i)=>i===12?Machine.Core:Machine.Empty),scrap:77,restoration:10,region:2}),
+      [firstKey]:"yes"
+    }
+  },async page=>{
+    const originalSave=await raw(page);
+    await page.locator("#how-to-play").click();
+    assert.match(await page.locator("#welcome-copy").textContent(),/temporary practice network/i);
+    await page.locator("#begin").click();
+    assert.equal(await page.locator("#tutorial-return").isVisible(),true);
+    assert.match(await page.locator("#tutorial-mode-label").textContent(),/Temporary practice/);
+    const savedBefore=await raw(page);
+    assert.equal(savedBefore,originalSave,"opening practice leaves original SAVE bytes unchanged");
+    await buildGuidedNetwork(page);
+    assert.equal(await page.locator("#revive").isVisible(),true);
+    await page.locator("#revive").click();
+    await page.locator("#upgrade-mining").click();
+    await page.evaluate(()=>{window.confirm=()=>true;});
+    await page.locator("#repair").click();
+    await runAutosaveTicks(page,12);
+    await page.locator("#dismiss-recap").click();
+    await page.evaluate(()=>{
+      window.__relightRealNow=Date.now.bind(Date);
+      window.__relightClockOffset=10000;
+      Date.now=()=>window.__relightRealNow()+window.__relightClockOffset;
+    });
+    await hideAndNotify(page);
+    await page.evaluate(()=>{Object.defineProperty(document,"visibilityState",{configurable:true,value:"visible"});document.dispatchEvent(new Event("visibilitychange"));});
+    assert.equal(await page.locator("#progress-recap").isHidden(),true,
+      "practice resume does not apply elapsed time already simulated in its temporary world");
+    await page.evaluate(()=>{window.__relightClockOffset+=10000;});
+    await hideAndNotify(page);
+    await page.evaluate(()=>{Object.defineProperty(document,"visibilityState",{configurable:true,value:"visible"});document.dispatchEvent(new Event("visibilitychange"));});
+    assert.equal(await page.locator("#progress-recap").isHidden(),true,
+      "repeated practice hide/resume cycles never manufacture offline catch-up");
+    await page.evaluate(()=>{Date.now=window.__relightRealNow;});
+    await pagehide(page);
+    assert.equal(await raw(page),savedBefore,
+      "practice build, claim, upgrade, reset, autosave, visibility and pagehide never write the real SAVE");
+    await page.locator("#tutorial-return").focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await page.evaluate(()=>document.activeElement.id),"how-to-play",
+      "keyboard return restores focus outside the temporary practice world");
+    const restored=JSON.parse(await raw(page));
+    assert.equal(restored.region,2,"practice region claims never transfer");
+    assert.equal(restored.scrap,77,"practice rewards and spending never transfer");
+    assert.deepEqual(restored.cells,Array.from({length:25},(_,i)=>i===12?Machine.Core:Machine.Empty),
+      "practice construction and reset never alter the real grid");
+
+    await page.locator("#how-to-play").click();await page.locator("#begin").click();
+    await build(page,Machine.Generator,19);
+    await page.reload({waitUntil:"networkidle"});
+    assert.equal(await page.locator("#tutorial-return").isVisible(),false,
+      "reload exits temporary practice rather than restoring its separate state");
+    const afterReload=JSON.parse(await raw(page));
+    assert.equal(afterReload.region,2);assert.equal(afterReload.scrap,77);
+    assert.deepEqual(afterReload.cells,Array.from({length:25},(_,i)=>i===12?Machine.Core:Machine.Empty));
+  }));
+
+  await check("practice return applies productive saved-world catch-up exactly once",()=>{
+    const productive=fresh();productive.scrap=0;productive.savedAt=Math.floor(Date.now()/1000);
+    return withPage({initial:{[saveKey]:JSON.stringify(productive),[firstKey]:"yes"}},async page=>{
+      await page.evaluate(()=>{
+        window.__practiceClockBase=Date.now();window.__practiceClockOffset=0;
+        Date.now=()=>window.__practiceClockBase+window.__practiceClockOffset;
+      });
+      const before=JSON.parse(await raw(page));
+      await page.locator("#how-to-play").click();await page.locator("#begin").click();
+      await page.evaluate(()=>{window.__practiceClockOffset=10000;});
+      await page.locator("#tutorial-return").click();
+      const afterReturn=JSON.parse(await raw(page));
+      assert.ok(Math.abs(afterReturn.scrap-(before.scrap+3))<.001,
+        "10 seconds of one connected mine and one LIFE yield the model's +3 net scrap");
+      assert.ok(Math.abs(afterReturn.restoration-(before.restoration+7))<.001,
+        "the real saved world receives the model's +7 recovery once");
+      assert.match(await page.locator("#recap-details").innerText(),/Recovery gained: \+7\.0 points/);
+      assert.match(await page.locator("#recap-details").innerText(),/Scrap net: \+3\.0 scrap/);
+      await page.evaluate(()=>document.dispatchEvent(new Event("visibilitychange")));
+      const afterSecondResume=JSON.parse(await raw(page));
+      assert.equal(afterSecondResume.scrap,afterReturn.scrap,
+        "a second resume at the same savedAt does not apply scrap gains again");
+      assert.equal(afterSecondResume.restoration,afterReturn.restoration,
+        "a second resume at the same savedAt does not apply recovery again");
+    });
+  });
+
+  await check("practice preserves corrupt saves and external save changes",async()=>{
+    const corrupt="{not valid save bytes";
+    await withPage({initial:{[saveKey]:corrupt,[firstKey]:"yes"}},async page=>{
+      await page.locator("#how-to-play").click();await page.locator("#begin").click();
+      await build(page,Machine.Generator,19);
+      await runAutosaveTicks(page,12);await hideAndNotify(page);await pagehide(page);
+      assert.equal(await raw(page),corrupt,"practice lifecycle actions preserve unreadable SAVE bytes");
+      await page.locator("#tutorial-return").click();
+      assert.equal(await raw(page),corrupt,"return cannot overwrite a corrupt protected save");
+      assert.match((await status(page)).text,/existing save can't be read/i);
+    });
+
+    const original=savedWorld({scrap:80,region:1});
+    const external=savedWorld({scrap:123,region:4});
+    await withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
+      await page.locator("#how-to-play").click();await page.locator("#begin").click();
+      await page.evaluate(value=>window.__relightTest.setRaw("relight.webplaytest.v1",value),external);
+      await build(page,Machine.Generator,19);
+      await runAutosaveTicks(page,12);await hideAndNotify(page);await pagehide(page);
+      assert.equal(await raw(page),external,"practice cannot overwrite an external save change");
+      await page.locator("#tutorial-return").click();
+      assert.equal(await raw(page),external,"return detects and preserves the external save change");
+      assert.match((await status(page)).text,/changed outside this session/i);
+    });
+  });
 
   await check("durable save warning remains independent from build, low-scrap and removal feedback",()=>withPage({
     initial:{[saveKey]:savedWorld({scrap:20}),[firstKey]:"yes"}
@@ -425,6 +770,12 @@ try{
         "the returned keyboard focus is visibly outlined");
       const focusStyle=await page.locator("#region-state").evaluate(el=>getComputedStyle(el).outlineStyle);
       assert.equal(focusStyle,"solid","the theme-consistent focus outline is rendered");
+      const recap=page.locator("#progress-recap");
+      assert.equal(await recap.isVisible(),true,"claim opens an independent progress recap");
+      const recapText=await recap.innerText();
+      assert.match(recapText,/Claimed \+50\.0 scrap/);
+      assert.match(recapText,/Next region recovery target: 150 points/);
+      assert.match(recapText,/AURORA-9 milestone progress: 33% toward the next planet \(three regions\)/);
 
       const writes=await page.evaluate(()=>window.__relightTest.writeEvents());
       await page.evaluate(()=>{
@@ -436,10 +787,14 @@ try{
       assert.equal(afterRepeats.restoration,0,"repeated clicks do not reset the new region");
       assert.equal(await page.evaluate(()=>window.__relightTest.writeEvents()),writes,
         "rejected repeat clicks do not write another claim");
+      await page.locator("#dismiss-recap").focus();
+      await page.keyboard.press("Enter");
+      assert.equal(await recap.isVisible(),false,"keyboard can dismiss the recap");
       await page.reload({waitUntil:"networkidle"});
       assert.match(await page.locator("#sector").textContent(),/SECTOR 02/);
       assert.equal(await page.locator("#revive").isVisible(),false,
         "reload preserves the single claim and hides the next action until ready");
+      assert.equal(await recap.isVisible(),false,"a claimed recap does not repeat after reload");
     });
   });
 
@@ -679,6 +1034,67 @@ try{
         assert.equal(motion.name,"none","reduced motion keeps energy links as a static line");
         assert.equal(motion.dash,"none","static flow has no moving dash pattern");
       });
+  });
+
+  await check("offline recap reports actual zero, positive, negative, and capped model changes",async()=>{
+    const dryCells=fresh().cells;dryCells[11]=Machine.Empty;dryCells[14]=Machine.Empty;
+    const noMine=fresh().cells;noMine[11]=Machine.Empty;
+    const cases=[
+      {name:"zero",width:320,seconds:60,scrap:0,cells:dryCells,delta:/Scrap net: 0\.0 scrap/,recovery:/Recovery gained: 0\.0 points/},
+      {name:"positive",width:390,seconds:10,scrap:0,cells:fresh().cells,delta:/Scrap net: \+\d+\.\d scrap/,recovery:/Recovery gained: \+\d+\.\d points/},
+      {name:"negative",width:1440,seconds:60,scrap:10,cells:noMine,delta:/Scrap net: −\d+\.\d scrap/,recovery:/Recovery gained: \+\d+\.\d points/},
+      {name:"capped",width:390,seconds:MAX_OFFLINE+3600,scrap:0,cells:fresh().cells,delta:/Scrap net: [−+]?\d+\.\d scrap/,recovery:/Recovery gained: \+\d+\.\d points/}
+    ];
+    for(const fixture of cases){
+      const originalScrap=fixture.scrap;
+      const savedAt=Math.floor(Date.now()/1000)-fixture.seconds;
+      await withPage({width:fixture.width,height:fixture.width===320?640:844,initial:{
+        [saveKey]:savedWorld({scrap:fixture.scrap,cells:fixture.cells,savedAt}),[firstKey]:"yes"
+      }},async page=>{
+        const recap=page.locator("#progress-recap");
+        assert.equal(await recap.isVisible(),true,fixture.name+" return displays recap");
+        const details=await recap.innerText();
+        assert.match(details,fixture.delta,fixture.name+" displays signed net scrap");
+        assert.match(details,fixture.recovery,fixture.name+" displays actual recovery delta");
+        assert.match(details,/Planet milestone: \d+% of its three-region cycle/);
+        assert.match(details,/Offline progress is capped at 8 hours; scrap mining is capped at 30 minutes/);
+        const resumed=JSON.parse(await raw(page));
+        const applied=Math.min(Math.max(0,resumed.savedAt-savedAt),MAX_OFFLINE);
+        assert.equal(resumed.totalPlayed,applied,fixture.name+" uses model-applied elapsed time");
+        const displayDelta=(value,unit)=>{
+          const amount=(Math.round(Math.abs(value)*10)/10).toFixed(1);
+          return (value>0?"+":value<0?"−":"")+amount+" "+unit;
+        };
+        assert.ok(details.includes("Scrap net: "+displayDelta(resumed.scrap-originalScrap,"scrap")+"."),
+          fixture.name+" recap matches the model's actual scrap delta");
+        assert.ok(details.includes("Recovery gained: "+displayDelta(resumed.restoration,"points")+"."),
+          fixture.name+" recap matches the model's actual recovery delta");
+        if(fixture.name==="zero")assert.equal(resumed.scrap-originalScrap,0);
+        if(fixture.name==="positive")assert.ok(resumed.scrap-originalScrap>0);
+        if(fixture.name==="negative")assert.ok(resumed.scrap-originalScrap<0);
+        if(fixture.name==="capped"){
+          assert.equal(resumed.totalPlayed,MAX_OFFLINE,"progress stops at the 8h cap");
+          assert.match(details,/Applied 8h offline progress of 9h away/);
+        }
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),
+          fixture.name+" recap does not introduce horizontal overflow");
+        const dismiss=page.locator("#dismiss-recap"),box=await dismiss.boundingBox();
+        assert.ok(box&&box.width>=44&&box.height>=44,"dismiss target remains touch sized");
+        if(fixture.name==="positive"){
+          await page.emulateMedia({reducedMotion:"reduce"});
+          const duration=await dismiss.evaluate(el=>getComputedStyle(el).transitionDuration);
+          assert.ok(duration.split(",").every(value=>parseFloat(value)<=0.001),
+            "recap remains static under reduced motion");
+          await dismiss.focus();
+          assert.equal(await dismiss.evaluate(el=>el.matches(":focus-visible")),true,
+            "recap dismiss is keyboard visible");
+          await page.keyboard.press("Space");
+          assert.equal(await recap.isVisible(),false,"keyboard dismisses offline recap");
+          await page.reload({waitUntil:"networkidle"});
+          assert.equal(await recap.isVisible(),false,"persisted return does not repeat after reload");
+        }
+      });
+    }
   });
 
   const crowdedCells=Array(25).fill(Machine.Relay);crowdedCells[12]=Machine.Core;

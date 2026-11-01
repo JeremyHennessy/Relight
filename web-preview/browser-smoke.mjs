@@ -37,7 +37,9 @@ try{
   });
   console.log("ONBOARDING GEOMETRY",JSON.stringify(geometry));
   await p.locator("#begin").click({timeout:4000});
-  assert.equal(await p.locator("#welcome").evaluate(e=>e.open),false,"tutorial closes");
+  await p.locator("#tutorial-skip").click();
+  assert.equal(await p.locator("#welcome").evaluate(e=>e.open),false,"walkthrough can be skipped for free play");
+  await p.locator("#mobile-feedback").evaluate(e=>{e.scrollIntoView({behavior:"instant",block:"start"});window.scrollBy(0,-1);});
   // Wait for the smooth scroll to put a usable part of the board into
   // view, not merely its first pixel at the bottom of the phone viewport.
   await p.waitForFunction(()=>{
@@ -167,6 +169,8 @@ try{
   await small.goto(origin,{waitUntil:"networkidle"});
   assert.equal(await small.locator("#welcome").evaluate(e=>e.open),true);
   await small.locator("#begin").click({timeout:6000});
+  await small.locator("#tutorial-skip").click();
+  await small.locator("#mobile-feedback").evaluate(e=>{e.scrollIntoView({behavior:"instant",block:"start"});window.scrollBy(0,-1);});
   await small.waitForFunction(()=>{
     const instructions=document.querySelector("#mobile-feedback").getBoundingClientRect();
     const recovery=document.querySelector(".board-recovery").getBoundingClientRect();
@@ -217,6 +221,7 @@ try{
   assert.equal(await d.locator("#mobile-feedback").isVisible(),false,
     "desktop keeps normal transient feedback instead of mobile reserved line");
   await d.locator("#begin").click();
+  await d.locator("#tutorial-skip").click();
   const desktopOverflow=await d.evaluate(()=>document.documentElement.scrollWidth-window.innerWidth);
   assert.ok(desktopOverflow<=2,"desktop page has horizontal overflow: "+desktopOverflow);
   await d.screenshot({path:"relight-desktop-playtest.png",fullPage:true,animations:"disabled"});
