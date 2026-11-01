@@ -3,10 +3,19 @@
 import assert from "node:assert/strict";
 import {chromium} from "playwright";
 const origin=process.env.RELIGHT_BROWSER_URL||"http://127.0.0.1:8765";
-const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
+const executablePath=process.env.RELIGHT_CHROMIUM_EXECUTABLE_PATH||undefined;
+const browser=await chromium.launch({headless:true,args:["--no-sandbox"],executablePath});
 const errors=[];
+async function isolateRemoteFonts(context){
+  if(!["127.0.0.1","localhost"].includes(new URL(origin).hostname))return;
+  // The source preview imports Google Fonts. Serve an empty stylesheet in
+  // local-only checks so tests stay offline and exercise the system fallbacks.
+  await context.route("https://fonts.googleapis.com/**",route=>
+    route.fulfill({status:200,contentType:"text/css",body:""}));
+}
 try{
   const mobile=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true});
+  await isolateRemoteFonts(mobile);
   const p=await mobile.newPage();
   p.on("pageerror",err=>errors.push(err.message));
   p.on("console",msg=>{if(msg.type()==="error")errors.push(msg.text());});
@@ -134,6 +143,7 @@ try{
   const narrow=await browser.newContext({
     viewport:{width:320,height:640},deviceScaleFactor:1,isMobile:true,hasTouch:true
   });
+  await isolateRemoteFonts(narrow);
   const small=await narrow.newPage();
   small.on("pageerror",err=>errors.push(err.message));
   small.on("console",msg=>{if(msg.type()==="error")errors.push(msg.text());});
@@ -166,6 +176,7 @@ try{
   await narrow.close();
 
   const desktop=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
+  await isolateRemoteFonts(desktop);
   const d=await desktop.newPage();
   d.on("pageerror",err=>errors.push(err.message));
   d.on("console",msg=>{if(msg.type()==="error")errors.push(msg.text());});

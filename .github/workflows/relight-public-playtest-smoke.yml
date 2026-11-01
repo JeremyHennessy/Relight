@@ -12,6 +12,9 @@ permissions:
 
 jobs:
   live-website:
+    # A source push is not proof that Cloudflare has deployed it. Run this
+    # against the public site only after an explicit hosted deployment check.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     name: Verify published game is available and genuinely playable
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -41,6 +44,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Exercise hosted asset verification with offline fixtures
+        run: node --test web-preview/verify-hosted-assets.test.mjs
+      - name: Verify exact tested source assets are publicly hosted
+        env:
+          RELIGHT_BROWSER_URL: https://relight-ux-playtest.pages.dev
+        run: node web-preview/verify-hosted-assets.mjs
       - name: Install Chromium browser test tooling
         run: |
           npm install --prefix web-preview --no-save --no-package-lock playwright@1.56.1
@@ -49,6 +58,10 @@ jobs:
         env:
           RELIGHT_BROWSER_URL: https://relight-ux-playtest.pages.dev
         run: node web-preview/browser-smoke.mjs
+      - name: Check hosted save safety, feedback and responsive layouts
+        env:
+          RELIGHT_BROWSER_URL: https://relight-ux-playtest.pages.dev
+        run: node web-preview/browser-reliability.mjs
       - name: Archive independent hosted gameplay screenshots
         if: always()
         uses: actions/upload-artifact@v4

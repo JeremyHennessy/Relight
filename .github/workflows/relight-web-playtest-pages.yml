@@ -27,8 +27,12 @@ jobs:
           node --check web-preview/model.mjs
           node --check web-preview/app.mjs
           node --check web-preview/model.test.mjs
+          node --check web-preview/model-reliability.test.mjs
+          node --check web-preview/browser-reliability.mjs
+          node --check web-preview/verify-hosted-assets.mjs
+          node --check web-preview/verify-hosted-assets.test.mjs
       - name: Run deterministic playable-game tests
-        run: node --test web-preview/model.test.mjs
+        run: node --test web-preview/model.test.mjs web-preview/model-reliability.test.mjs web-preview/verify-hosted-assets.test.mjs
       - name: Check public static asset files
         run: |
           test -s web-preview/index.html
@@ -61,6 +65,7 @@ jobs:
           python3 -m http.server 8765 --directory web-preview > /tmp/relight-web-server.log 2>&1 &
           sleep 2
           node web-preview/browser-smoke.mjs
+          node web-preview/browser-reliability.mjs
       - name: Keep mobile/desktop screenshots for visual review
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,11 +81,9 @@ jobs:
           if-no-files-found: ignore
 
   deploy:
-    # GitHub Pages is intentionally not yet enabled for this repo. Avoid
-    # failing a tested browser build before this optional destination is ready.
-    # Enable Settings > Pages > Source = GitHub Actions, then set the Actions
-    # repository variable RELIGHT_PUBLISH_GITHUB_PAGES=true to opt in.
-    if: ${{ vars.RELIGHT_PUBLISH_GITHUB_PAGES == 'true' }}
+    # GitHub Pages is outside this release scope; the authorized preview is
+    # separately deployed and checked through the existing Cloudflare project.
+    if: ${{ false }}
     name: Publish Web Playtest to GitHub Pages
     runs-on: ubuntu-latest
     needs: [verify, browser]

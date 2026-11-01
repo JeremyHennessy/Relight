@@ -25,6 +25,10 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
 /* Phone action feedback is reserved beside the construction tools, so it
    cannot float across either the mission card or the grid. Desktop keeps the
    original non-interactive toast. */
+.save-status{display:none;max-width:100%;margin:11px 0 0;padding:9px 11px;border:1px solid #dc998c;border-radius:9px;background:rgba(108,52,49,.33);color:#ffcfbd;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.save-status:not([hidden]){display:block}
+.save-status[data-tone="success"]{border-color:rgba(96,213,181,.38);background:rgba(27,68,70,.4);color:#b9f6dd}
+.resource-note{overflow-wrap:anywhere;line-height:1.4}
 .mobile-feedback{display:none}
 @media(max-width:650px){
   .mobile-feedback{display:flex;align-items:center;min-height:38px;

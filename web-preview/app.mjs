@@ -20,12 +20,83 @@ const stepDescriptions=[
 const $=id=>document.getElementById(id);
 const now=()=>Math.floor(Date.now()/1000);
 let state=fresh(),selected=Machine.Generator,lastGoal=-1,lastPlanet=-1,lastCells="",lastNotice=0,saveClock=0,lastFrame=0,toastTimeout=null;
-try{const data=JSON.parse(localStorage.getItem(SAVE)||"null");state=loaded(data);}catch(e){console.warn("Saved run unavailable; starting fresh.",e);}
+let storageUnavailable=false,saveWriteProtected=false,lastVerifiedSave=null;
+const storageWarning="Progress can't be saved in this browser. You can keep playing, but progress won't persist after reload.";
+const unreadableSaveWarning="An existing save can't be read. It was left untouched; this session won't persist after reload.";
+const unverifiedSaveWarning="This browser couldn't verify the saved progress. This session will continue in memory.";
+const changedSaveWarning="The existing save changed outside this session and was left untouched. This session will continue in memory.";
+function storageGetSave(){
+  try{return window.localStorage.getItem(SAVE);}
+  catch(e){markStorageUnavailable(e,unreadableSaveWarning,true);return null;}
+}
+function storageGetFirst(){
+  try{return window.localStorage.getItem(FIRST);}
+  catch(e){console.warn("Tutorial preference could not be read; showing the guide.",e);return null;}
+}
+function storageSetFirst(value){
+  try{window.localStorage.setItem(FIRST,value);return true;}
+  catch(e){console.warn("Tutorial preference could not be saved.",e);return false;}
+}
+function markStorageUnavailable(error,message=storageWarning,protectSave=false){
+  if(!storageUnavailable)console.warn("Browser storage unavailable; progress will not persist.",error);
+  storageUnavailable=true;
+  if(protectSave)saveWriteProtected=true;
+  setSaveStatus(message,"warning");
+  if($("toast")){
+    $("toast").style.borderColor="#e09b88";
+  }
+}
+function markStorageAvailable(){
+  if(!storageUnavailable)return;
+  storageUnavailable=false;
+  setSaveStatus("Progress saving is available again. A verified copy is stored in this browser.","success");
+}
+const savedRaw=storageGetSave();
+if(saveWriteProtected)state=fresh();
+else if(savedRaw!==null){
+  try{
+    const saved=JSON.parse(savedRaw);
+    if(valid(saved))state=loaded(saved);
+    else{
+      state=fresh();
+      markStorageUnavailable(new Error("Saved world data failed validation."),unreadableSaveWarning,true);
+    }
+  }catch(e){
+    state=fresh();
+    markStorageUnavailable(e,unreadableSaveWarning,true);
+  }
+}
+if(!saveWriteProtected)lastVerifiedSave=savedRaw;
 const away=offline(state,now());
+function setSaveStatus(message,tone){
+  const el=$("save-status");
+  if(!el)return;
+  el.textContent=message;
+  el.dataset.tone=tone;
+  el.hidden=!message;
+}
 function persist(){
   state.savedAt=now();
-  try{localStorage.setItem(SAVE,JSON.stringify(state));}
-  catch(e){console.warn("Progress could not be saved in this browser",e);notice("Browser storage unavailable. This session won't persist.",true);}
+  if(saveWriteProtected)return;
+  const serialized=JSON.stringify(state);
+  let current;
+  try{current=window.localStorage.getItem(SAVE);}
+  catch(e){markStorageUnavailable(e,unreadableSaveWarning,true);return;}
+  if(current!==lastVerifiedSave){
+    markStorageUnavailable(new Error("Saved world data changed outside this session."),changedSaveWarning,true);
+    return;
+  }
+  try{window.localStorage.setItem(SAVE,serialized);}
+  catch(e){markStorageUnavailable(e,storageWarning);return;}
+  let saved;
+  try{saved=window.localStorage.getItem(SAVE);}
+  catch(e){markStorageUnavailable(e,unverifiedSaveWarning,true);return;}
+  if(saved!==serialized){
+    markStorageUnavailable(new Error("Saved world data did not match the current session."),unverifiedSaveWarning,true);
+    return;
+  }
+  lastVerifiedSave=serialized;
+  markStorageAvailable();
 }
 const readable=n=>n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"K":Number(n).toFixed(0);
 function mobileFeedback(message,warning=false){
@@ -102,7 +173,7 @@ function openGuide(){
   else welcome.setAttribute("open","");
 }
 function closeGuide(startPlaying=false){
-  try{localStorage.setItem(FIRST,"yes");}catch(_){}
+  storageSetFirst("yes");
   if(typeof welcome.close==="function"&&welcome.open)welcome.close();
   else welcome.removeAttribute("open");
   // The visual planet intro is tall on a phone. After onboarding, put the
@@ -118,17 +189,28 @@ function closeGuide(startPlaying=false){
 $("how-to-play").addEventListener("click",openGuide);
 $("begin").addEventListener("click",()=>closeGuide(true));
 $("dismiss-help").addEventListener("click",()=>closeGuide(false));
-welcome.addEventListener("cancel",()=>{try{localStorage.setItem(FIRST,"yes");}catch(_){}});
-if(!localStorage.getItem(FIRST))openGuide();
+welcome.addEventListener("cancel",()=>storageSetFirst("yes"));
+if(!storageGetFirst())openGuide();
 if(away>2)notice("Welcome back! Your network worked for "+Math.floor(away/60)+" offline minutes.");
 function render(force=false){
   if(!valid(state)){console.error("Invalid world, resetting safely");state=fresh();persist();}
   const r=rates(state),m=mission(state),ready=isReady(state),percentage=Math.min(100,100*state.restoration/TARGET(state.region));
   $("sector").textContent="SECTOR "+String(state.region+1).padStart(2,"0");
   $("scrap").textContent=readable(state.scrap);
-  $("power").textContent=r.consumers+" / "+r.capacity;
+  const totalMachines=state.cells.filter(type=>type!==Machine.Empty&&type!==Machine.Core).length;
+  const connectedMachines=state.cells.reduce((count,type,index)=>
+    count+(type!==Machine.Empty&&type!==Machine.Core&&r.connected[index]?1:0),0);
+  const disconnectedMachines=totalMachines-connectedMachines;
+  $("power").textContent=connectedMachines+" / "+totalMachines;
   $("mining-rate").textContent="+"+r.mined.toFixed(1)+" scrap / second";
-  $("power-note").textContent=r.fraction>=1?"All machines powered":Math.round(r.fraction*100)+"% power distribution";
+  const networkNote=disconnectedMachines?
+    disconnectedMachines+" machine"+(disconnectedMachines===1?" is":"s are")+" disconnected. Build a RELAY path to the reactor.":
+    "All placed machines are connected.";
+  const output=Math.round(r.fraction*100);
+  const capacityNote=r.fraction<1?
+    "Power shortage: "+r.consumers+" connected consumers for usable capacity "+r.capacity+"; output "+output+"%.":
+    "Power: "+r.consumers+" connected consumers, usable capacity "+r.capacity+"; output "+output+"%.";
+  $("power-note").textContent=networkNote+" "+capacityNote;
   $("restored-percent").textContent=Math.floor(percentage)+"%";
   $("recovery-fill").style.width=percentage+"%";
   $("recovery-progress").setAttribute("aria-valuenow",String(Math.floor(percentage)));

@@ -62,6 +62,8 @@ export function place(s,index,machine){
   if(s.cells[index]!==0)return {ok:false,message:"Tile occupied. Select REMOVE to clear it."};
   if(s.scrap<PRICE[machine])return {ok:false,message:"Not enough scrap. Your mines keep producing."};
   s.scrap-=PRICE[machine];s.cells[index]=machine;
+  if(!connected(s)[index])
+    return {ok:true,message:"Structure built, but it is disconnected. Build a RELAY path back to the reactor to connect it."};
   return {ok:true,message:"Structure built. Watch the network respond."};
 }
 export function upgrade(s,mining){
