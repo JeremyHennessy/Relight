@@ -75,16 +75,46 @@ jobs:
         env:
           RELIGHT_BROWSER_URL: https://relight-ux-playtest.pages.dev
         run: node web-preview/browser-reliability.mjs
+      - name: Validate expected hosted gameplay screenshots
+        if: always()
+        run: |
+          set -euo pipefail
+          expected=(
+            relight-firstlight-390-opening.png
+            relight-firstlight-390-viewport.png
+            relight-firstlight-390-kit.png
+            relight-firstlight-390-kit-viewport.png
+            relight-firstlight-390-ready.png
+            relight-firstlight-390-ready-viewport.png
+            relight-firstlight-390-awakened.png
+            relight-firstlight-320-viewport.png
+            relight-firstlight-320-opening.png
+            relight-firstlight-desktop-opening.png
+            relight-firstlight-desktop-viewport.png
+          )
+          missing=0
+          for screenshot in "${expected[@]}"; do
+            if [[ ! -s "${screenshot}" ]]; then
+              echo "::error file=${screenshot}::Expected hosted gameplay screenshot is missing or empty."
+              missing=1
+            fi
+          done
+          exit "${missing}"
       - name: Archive independent hosted gameplay screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: relight-live-web-screenshots
           path: |
-            relight-mobile-onboarding.png
-            relight-mobile-playtest.png
-            relight-mobile-awakening-ready.png
-            relight-mobile-awakened.png
-            relight-narrow-320-playtest.png
-            relight-desktop-playtest.png
-          if-no-files-found: ignore
+            relight-firstlight-390-opening.png
+            relight-firstlight-390-viewport.png
+            relight-firstlight-390-kit.png
+            relight-firstlight-390-kit-viewport.png
+            relight-firstlight-390-ready.png
+            relight-firstlight-390-ready-viewport.png
+            relight-firstlight-390-awakened.png
+            relight-firstlight-320-viewport.png
+            relight-firstlight-320-opening.png
+            relight-firstlight-desktop-opening.png
+            relight-firstlight-desktop-viewport.png
+          if-no-files-found: error
