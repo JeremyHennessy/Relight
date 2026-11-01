@@ -44,10 +44,15 @@ test("checker rejects redirects, non-200 responses and stale bytes offline",asyn
 });
 
 test("request signal bounds a stalled hosted fetch",async()=>{
-  await assert.rejects(verifyHostedAssets({timeoutMs:5,fetchImpl:async(_url,{signal})=>
-    new Promise((_resolve,reject)=>{
-      signal.addEventListener("abort",()=>reject(new Error("fixture timed out")),{once:true});
-      if(signal.aborted)reject(new Error("fixture timed out"));
-    })
-  }),/fixture timed out/);
+  // AbortSignal.timeout() uses an unreferenced timer on Node 22. Keep the
+  // test process alive until the abort fires so this fixture is deterministic.
+  const keepAlive=setTimeout(()=>{},100);
+  try{
+    await assert.rejects(verifyHostedAssets({timeoutMs:5,fetchImpl:async(_url,{signal})=>
+      new Promise((_resolve,reject)=>{
+        signal.addEventListener("abort",()=>reject(new Error("fixture timed out")),{once:true});
+        if(signal.aborted)reject(new Error("fixture timed out"));
+      })
+    }),/fixture timed out/);
+  }finally{clearTimeout(keepAlive);}
 });
