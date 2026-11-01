@@ -43,15 +43,6 @@ jobs:
               "${RELIGHT_BROWSER_URL}${asset}" -o "${dest}"
             test -s "${dest}"
           done
-          grep -q '<title>Relight' /tmp/relight-live-_
-          grep -q 'from "./model.mjs"' /tmp/relight-live-_app_mjs
-          # Prove the deployed site includes the latest inline-feedback fix,
-          # rather than showing a stale prior Cloudflare revision.
-          grep -Fq 'MINE is already selected for you' /tmp/relight-live-_app_mjs
-          grep -Fq 'function mobileFeedback(message,warning=false)' /tmp/relight-live-_app_mjs
-          grep -Fq '.mobile-feedback{display:none}' /tmp/relight-live-_styles_css
-          grep -Fq 'id="mobile-feedback"' /tmp/relight-live-_
-          echo "PASS: published HTTPS assets include accessible inline mobile feedback"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -61,6 +52,17 @@ jobs:
         env:
           RELIGHT_BROWSER_URL: https://relight-ux-playtest.pages.dev
         run: node web-preview/verify-hosted-assets.mjs
+      - name: Verify required mobile-feedback markers in hash-matched assets
+        run: |
+          set -euo pipefail
+          # The parity step above verified these checked-out source bytes against the live site.
+          grep -q '<title>Relight' web-preview/index.html
+          grep -q 'from "./model.mjs"' web-preview/app.mjs
+          grep -Fq 'MINE is already selected for you' web-preview/app.mjs
+          grep -Fq 'function mobileFeedback(message,warning=false)' web-preview/app.mjs
+          grep -Fq '.mobile-feedback{display:none}' web-preview/styles.css
+          grep -Fq 'id="mobile-feedback"' web-preview/index.html
+          echo "PASS: hash-matched assets include accessible inline mobile feedback"
       - name: Install Chromium browser test tooling
         run: |
           npm install --prefix web-preview --no-save --no-package-lock playwright@1.56.1
