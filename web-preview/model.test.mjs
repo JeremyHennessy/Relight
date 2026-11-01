@@ -140,14 +140,17 @@ test("new opening earns an idle-safe MINE kit and gates actions through the firs
  assert.equal(longIdle.cells[17],Machine.Extractor);assert.equal(longIdle.scrap,0,"kit placement does not spend scrap");
  assert.equal(redeemMineKit(longIdle,17).ok,false,"kit is single use");
  advance(longIdle,160);assert.equal(isReady(longIdle),true,"one mine can sustain the first region after idle depletion");
- assert.equal(claim(longIdle).ok,true);assert.equal(longIdle.region,1);assert.equal(longIdle.campaign.phase,"expansion");
+ assert.equal(claim(longIdle).ok,true);assert.equal(longIdle.region,1);assert.equal(longIdle.campaign.phase,"investment-choice");
  const reward=longIdle.scrap;assert.equal(claim(longIdle).ok,false);assert.equal(longIdle.scrap,reward,"claim cannot duplicate its reward");
- assert.equal(place(longIdle,8,Machine.Extractor).ok,false,"expansion unlock exposes one legal site only");
- assert.equal(place(longIdle,7,Machine.Extractor).ok,true);assert.equal(longIdle.campaign.phase,"power");
- assert.ok(rates(longIdle).fraction<1,"second MINE creates a real capacity shortage");
- assert.equal(upgrade(longIdle,false).ok,false,"upgrade remains locked until the earned POWER introduction");
+ assert.equal(place(longIdle,8,Machine.Extractor).ok,false,"choice exposes only its two marked world sites");
+ assert.equal(place(longIdle,7,Machine.Extractor).ok,true);assert.equal(longIdle.campaign.firstInvestment,"mine");assert.equal(longIdle.campaign.phase,"investment-growth");
+ assert.ok(rates(longIdle).fraction<1,"MINE-first choice creates a visible real capacity shortage");
+ assert.equal(upgrade(longIdle,false).ok,false,"upgrades remain locked until both chosen investment sites are built");
+ assert.equal(place(longIdle,9,Machine.Generator).ok,false,"the second site remains locked before 25 real recovery points");
+ advance(longIdle,60);assert.equal(longIdle.campaign.phase,"investment-second");assert.ok(longIdle.restoration>=25);
+ assert.equal(valid(JSON.parse(JSON.stringify(longIdle))),true,"the opened second site survives a save reload");
  assert.equal(place(longIdle,9,Machine.Generator).ok,true);assert.equal(longIdle.campaign.phase,"open");
- assert.equal(rates(longIdle).fraction,1,"new POWER resolves the introduced shortage");
+ assert.equal(rates(longIdle).fraction,1,"POWER resolves the introduced shortage");
  longIdle.scrap=0;
  assert.equal(place(longIdle,17,Machine.Empty).ok,true,"one MINE can be removed while another remains connected");
  assert.equal(place(longIdle,7,Machine.Empty).ok,false,"the last connected MINE cannot be removed at zero scrap");
@@ -178,10 +181,37 @@ test("campaign saves validate each milestone while legacy and future data stay d
  redeemMineKit(resumed,17);assert.equal(valid(resumed),true);
 });
 
+test("v2 campaigns reject missing network anchors and firstInvestment before the choice",()=>{
+ const repair=freshCampaign();
+ const restoring=structuredClone(repair);assert.equal(repairGreenhouse(restoring).ok,true);
+ const kit=structuredClone(restoring);advance(kit,10);assert.equal(kit.campaign.phase,"mine-kit");
+ const firstRegion=structuredClone(kit);assert.equal(redeemMineKit(firstRegion,17).ok,true);
+ const preChoice=[repair,restoring,kit,firstRegion];
+ for(const state of preChoice){
+  assert.equal(valid(state),true,state.campaign.phase+" is a valid v2 pre-choice save");
+  state.campaign.firstInvestment="mine";
+  assert.equal(valid(state),false,state.campaign.phase+" cannot record an investment before the first region claim");
+ }
+ const ready=structuredClone(firstRegion);ready.campaign.firstInvestment=null;ready.restoration=TARGET(0);assert.equal(claim(ready).ok,true);
+ assert.equal(ready.campaign.phase,"investment-choice");assert.equal(valid(ready),true);
+ assert.equal(place(ready,7,Machine.Extractor).ok,true);
+ assert.equal(ready.campaign.phase,"investment-growth");assert.equal(valid(ready),true);
+ const missingLife=structuredClone(ready);missingLife.cells[14]=Machine.Relay;
+ assert.equal(valid(missingLife),false,"growth cannot lose the connected LIFE while both expansion sites are gated");
+ advance(ready,25/rates(ready).restored);assert.equal(ready.campaign.phase,"investment-second");
+ const missingSecondLife=structuredClone(ready);missingSecondLife.cells[14]=Machine.Relay;
+ assert.equal(valid(missingSecondLife),false,"second-site phase also requires its connected LIFE anchor");
+ const missingRelay=structuredClone(ready);missingRelay.cells[13]=Machine.Empty;
+ assert.equal(valid(missingRelay),false,"choice-network phases require the connected RELAY anchor");
+ assert.equal(valid(ready),true,"the valid second-site state remains saveable");
+});
+
 test("fully opened campaigns and legacy saves keep ordinary later-region claims",()=>{
  const s=freshCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);
  assert.equal(claim(s).ok,true,"the first campaign claim opens the new frontier");
  assert.equal(place(s,7,Machine.Extractor).ok,true);
+ assert.equal(s.campaign.phase,"investment-growth");advance(s,60);
+ assert.equal(s.campaign.phase,"investment-second");
  assert.equal(place(s,9,Machine.Generator).ok,true);
  assert.equal(s.campaign.phase,"open");
  s.restoration=TARGET(s.region);
@@ -202,16 +232,94 @@ test("unaffordable, occupied and full-site campaign actions never consume unlock
  const s=freshCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);
  advance(s,160);assert.equal(claim(s).ok,true);
  const phase=s.campaign.phase,grid=s.cells.slice();s.scrap=0;
- assert.equal(place(s,7,Machine.Extractor).ok,false,"unaffordable expansion placement is rejected");
+ assert.equal(place(s,7,Machine.Extractor).ok,false,"unaffordable choice is rejected");
  assert.equal(s.campaign.phase,phase);assert.deepEqual(s.cells,grid);
  s.scrap=50;s.cells[7]=Machine.Relay;
- assert.equal(place(s,7,Machine.Extractor).ok,false,"an occupied expansion target remains occupied and locked");
+ assert.equal(place(s,7,Machine.Extractor).ok,false,"an occupied MINE site does not consume the choice");
  s.cells[7]=Machine.Empty;
- for(let i=0;i<25;i++)if(i!==7&&i!==12&&s.cells[i]===Machine.Empty)s.cells[i]=Machine.Relay;
- assert.equal(place(s,7,Machine.Extractor).ok,true,"the explicitly open target remains legal even on a full surrounding board");
- assert.equal(s.campaign.phase,"power");
- s.scrap=0;assert.equal(place(s,9,Machine.Generator).ok,false,"POWER cannot exceed the available claim reward");
- s.scrap=50;s.cells[9]=Machine.Relay;
- assert.equal(place(s,9,Machine.Generator).ok,false,"occupied POWER target does not advance the stage");
- assert.equal(s.campaign.phase,"power");
+ for(let i=0;i<25;i++)if(![7,9,12,17].includes(i)&&s.cells[i]===Machine.Empty)s.cells[i]=Machine.Relay;
+ assert.equal(place(s,7,Machine.Extractor).ok,true,"the marked MINE site remains legal on a full surrounding board");
+ assert.equal(s.campaign.phase,"investment-growth");
+ s.scrap=50;
+ assert.equal(place(s,9,Machine.Generator).ok,false,"the other site stays locked before 25 recovery");
+ assert.equal(s.campaign.phase,"investment-growth");
+});
+
+
+test("new investment branches expose truthful rates, survive the 25-point gate, and converge",()=>{
+ const readyCampaign=()=>{
+  const s=freshCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);
+  assert.equal(isReady(s),true);assert.equal(claim(s).ok,true);assert.equal(s.campaign.phase,"investment-choice");return s;
+ };
+ const mineFirst=readyCampaign();
+ advance(mineFirst,25/rates(mineFirst).restored);
+ assert.ok(mineFirst.restoration>=25);assert.equal(mineFirst.campaign.phase,"investment-choice",
+  "waiting before a first investment still exposes both first choices");
+ const minePreview=structuredClone(mineFirst);minePreview.cells[7]=Machine.Extractor;
+ const mineRates=rates(minePreview);
+ assert.ok(Math.abs(mineRates.mined-4/3)<1e-9);
+ assert.ok(Math.abs(mineRates.used-7/15)<1e-9);
+ assert.ok(Math.abs(mineRates.restored-7/15)<1e-9);
+ assert.ok(Math.abs((mineRates.mined-mineRates.used)-13/15)<1e-9);
+ assert.equal(place(mineFirst,7,Machine.Extractor).ok,true);
+ assert.equal(mineFirst.campaign.phase,"investment-second","ready-at-choice grants the second site immediately");
+ assert.equal(valid(JSON.parse(JSON.stringify(mineFirst))),true,"the chosen investment reloads without migration");
+ assert.equal(place(mineFirst,9,Machine.Generator).ok,true);
+ assert.equal(mineFirst.campaign.phase,"open");
+ const mineFinal=rates(mineFirst);
+ assert.equal(mineFinal.fraction,1);assert.equal(mineFinal.mined,2);assert.equal(mineFinal.restored,.84);
+ advance(mineFirst,1000);
+ assert.equal(claim(mineFirst).ok,true,"both sites converge to normal region claiming");
+ assert.equal(mineFirst.region,2);assert.equal(mineFirst.campaign.phase,"open");
+
+ const powerFirst=readyCampaign();
+ const powerPreview=structuredClone(powerFirst);powerPreview.cells[9]=Machine.Generator;
+ const powerRates=rates(powerPreview);
+ assert.equal(powerRates.fraction,1);assert.equal(powerRates.mined,1);
+ assert.equal(powerRates.used,.7);assert.equal(powerRates.restored,.84);
+ assert.ok(Math.abs(powerRates.mined-powerRates.used-.3)<1e-9);
+ assert.equal(place(powerFirst,9,Machine.Generator).ok,true);
+ assert.equal(powerFirst.campaign.firstInvestment,"power");
+ assert.equal(powerFirst.campaign.phase,"investment-growth");
+ powerFirst.scrap=0;
+ advance(powerFirst,25/rates(powerFirst).restored);
+ assert.ok(powerFirst.scrap>0,"POWER-first recovery remains fueled from zero saved scrap");
+ assert.equal(powerFirst.campaign.phase,"investment-second","25 actual points open the other site");
+ assert.equal(valid(JSON.parse(JSON.stringify(powerFirst))),true);
+ advance(powerFirst,12);assert.ok(powerFirst.scrap>=12,"the open MINE investment becomes affordable through live production");
+ assert.equal(place(powerFirst,7,Machine.Extractor).ok,true);
+ const powerFinal=rates(powerFirst);
+ assert.equal(powerFirst.campaign.phase,"open");assert.equal(powerFinal.fraction,1);
+ assert.equal(powerFinal.mined,2);assert.equal(powerFinal.restored,.84);
+ advance(powerFirst,1000);assert.equal(claim(powerFirst).ok,true);assert.equal(powerFirst.region,2);
+});
+
+test("25 recovery threshold is actual, persistable, offline-safe and cannot be crossed by a timer",()=>{
+ const s=freshCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);claim(s);
+ assert.equal(place(s,7,Machine.Extractor).ok,true);
+ assert.equal(s.campaign.phase,"investment-growth");
+ const r=rates(s);advance(s,24.9/r.restored);
+ assert.ok(s.restoration<25);assert.equal(s.campaign.phase,"investment-growth");
+ const beforeReload=JSON.parse(JSON.stringify(s));assert.equal(valid(beforeReload),true);
+ const resumed=JSON.parse(JSON.stringify(beforeReload));advance(resumed,(25-resumed.restoration)/rates(resumed).restored);
+ assert.ok(resumed.restoration>=25);assert.equal(resumed.campaign.phase,"investment-second");
+ const offlineState=JSON.parse(JSON.stringify(beforeReload));offlineState.savedAt=100;
+ const applied=offline(offlineState,100+MAX_OFFLINE);assert.equal(applied,MAX_OFFLINE);
+ assert.ok(offlineState.restoration>=25);assert.equal(offlineState.campaign.phase,"investment-second");
+ const noEarlyClaim=JSON.parse(JSON.stringify(resumed));noEarlyClaim.restoration=TARGET(noEarlyClaim.region);
+ assert.equal(valid(noEarlyClaim),true);
+ assert.equal(claim(noEarlyClaim).ok,false,"a full meter cannot bypass the required second site");
+ assert.equal(place(resumed,9,Machine.Generator).ok,true);assert.equal(resumed.campaign.phase,"open");
+});
+
+test("v1 campaign saves remain byte-stable on their existing forced route",()=>{
+ const s=freshCampaign();s.campaign.version=1;delete s.campaign.firstInvestment;
+ repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);
+ assert.equal(claim(s).ok,true);assert.equal(s.campaign.phase,"expansion");assert.equal(valid(s),true);
+ const bytes=JSON.stringify(s),loadedV1=JSON.parse(bytes);
+ assert.equal(valid(loadedV1),true);assert.equal(JSON.stringify(loadedV1),bytes,"loading a v1 campaign adds no new field or migration");
+ assert.equal(place(loadedV1,9,Machine.Generator).ok,false,"v1 does not gain the new POWER-first route");
+ assert.equal(place(loadedV1,7,Machine.Extractor).ok,true);assert.equal(loadedV1.campaign.phase,"power");
+ assert.equal(place(loadedV1,9,Machine.Generator).ok,true);assert.equal(loadedV1.campaign.phase,"open");
+ assert.equal(Object.hasOwn(loadedV1.campaign,"firstInvestment"),false);
 });

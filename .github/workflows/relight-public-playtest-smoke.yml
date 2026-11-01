@@ -91,6 +91,12 @@ jobs:
             relight-firstlight-320-opening.png
             relight-firstlight-desktop-opening.png
             relight-firstlight-desktop-viewport.png
+            relight-firstlight-320-investment-choice.png
+            relight-firstlight-390-investment-choice.png
+            relight-firstlight-390-investment-growth.png
+            relight-firstlight-390-investment-unlocked.png
+            relight-firstlight-390-reduced-motion.png
+            relight-firstlight-desktop-investment-choice.png
           )
           missing=0
           for screenshot in "${expected[@]}"; do
@@ -117,4 +123,10 @@ jobs:
             relight-firstlight-320-opening.png
             relight-firstlight-desktop-opening.png
             relight-firstlight-desktop-viewport.png
+            relight-firstlight-320-investment-choice.png
+            relight-firstlight-390-investment-choice.png
+            relight-firstlight-390-investment-growth.png
+            relight-firstlight-390-investment-unlocked.png
+            relight-firstlight-390-reduced-motion.png
+            relight-firstlight-desktop-investment-choice.png
           if-no-files-found: error

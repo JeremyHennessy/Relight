@@ -25,7 +25,7 @@
   <section class="world-section" aria-label="Planet status">
     <div class="world-intro">
       <div class="eyebrow"><span class="eyebrow-dot"></span> MISSION CONTROL <span class="thin-sep">/</span> <span id="sector">SECTOR 01</span></div>
-      <h1 id="world-title">Every world<br>deserves <em>another dawn.</em></h1>
+      <h1 id="world-title" tabindex="-1">Every world<br>deserves <em>another dawn.</em></h1>
       <p class="intro-copy" id="world-copy">The planet has gone quiet. Restore its energy network, power the machines and watch life return—one region at a time.</p>
       <div class="resource-grid" aria-label="Your current resources">
         <div class="resource">
@@ -48,6 +48,103 @@
       <canvas id="planet" width="520" height="520" role="img" aria-label="Procedural planet changing as recovery progresses"></canvas>
       <div class="planet-name"><span class="small-cross">✳</span><div><strong id="planet-name">AURORA-9</strong><small id="planet-caption">ATMOSPHERE: DORMANT</small></div></div>
       <div class="planet-tag" id="planet-tag"><span class="tag-dot"></span> RESTORATION ACTIVE</div>
+    </div>
+    <div class="opening-world" id="opening-world" data-phase="repair" data-powered="false"
+      role="group" aria-label="First Light field scene">
+      <svg class="opening-landscape" viewBox="0 0 960 420" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <linearGradient id="scene-sky" x2="0" y2="1"><stop stop-color="#132d40"/><stop offset="1" stop-color="#244453"/></linearGradient>
+          <linearGradient id="scene-ground" x2="0" y2="1"><stop stop-color="#33424a"/><stop offset="1" stop-color="#182c35"/></linearGradient>
+          <linearGradient id="scene-glass" x2="0" y2="1"><stop stop-color="#294b58"/><stop offset="1" stop-color="#172d3b"/></linearGradient>
+          <radialGradient id="scene-reactor-glow"><stop stop-color="#ffd783" stop-opacity=".8"/><stop offset="1" stop-color="#ffd783" stop-opacity="0"/></radialGradient>
+          <radialGradient id="scene-life-glow"><stop stop-color="#83f2ca" stop-opacity=".78"/><stop offset="1" stop-color="#83f2ca" stop-opacity="0"/></radialGradient>
+        </defs>
+        <rect width="960" height="420" fill="url(#scene-sky)"/>
+        <circle cx="785" cy="74" r="25" fill="#d1e6dd" opacity=".32"/>
+        <circle cx="785" cy="74" r="36" fill="#d1e6dd" opacity=".06"/>
+        <g fill="#d1edf0" opacity=".64"><circle cx="112" cy="72" r="2"/><circle cx="338" cy="46" r="1.6"/><circle cx="557" cy="84" r="1.5"/><circle cx="884" cy="139" r="2"/></g>
+        <path d="M0 252 Q110 198 224 236 T448 225 T688 230 T960 205 V420 H0Z" fill="#253d49"/>
+        <path d="M0 300 Q157 255 312 290 T622 284 T960 266 V420 H0Z" fill="url(#scene-ground)"/>
+        <path d="M0 346 Q200 317 391 345 T744 330 T960 341 V420 H0Z" fill="#172d35" opacity=".88"/>
+        <g fill="#a9c5c4" opacity=".66" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700" letter-spacing="2">
+          <text x="116" y="204">REACTOR</text><text x="694" y="195">GREENHOUSE</text>
+        </g>
+        <path class="scene-cable-base" d="M218 272 C282 256 322 285 377 270 M464 270 C520 253 572 280 648 267"/>
+        <path class="scene-cable-dead" d="M218 272 C282 256 322 285 377 270 M464 270 C520 253 572 280 648 267"/>
+        <path class="scene-cable-live" d="M218 272 C282 256 322 285 377 270 L464 270 C520 253 572 280 648 267"/>
+        <path class="scene-flow" pathLength="1" d="M218 272 C282 256 322 285 377 270 L464 270 C520 253 572 280 648 267"/>
+        <g id="scene-reactor">
+          <circle class="scene-reactor-aura" cx="193" cy="268" r="83" fill="url(#scene-reactor-glow)"/>
+          <path d="M125 307 L137 226 Q193 189 249 226 L261 307Z" fill="#314a54" stroke="#819c96" stroke-width="3"/>
+          <path d="M147 299 L155 238 L193 216 L231 238 L239 299Z" fill="#182e39" stroke="#c5a768" stroke-width="3"/>
+          <path d="M176 282 L181 250 L193 239 L205 250 L210 282Z" fill="#efc873" stroke="#fff0bd" stroke-width="3"/>
+          <path d="M108 309H278V329H108Z" fill="#1c313a" stroke="#708b89" stroke-width="3"/>
+          <path d="M144 222L154 203M242 222L232 203" stroke="#96aaa0" stroke-width="5" stroke-linecap="round"/>
+          <text x="193" y="354" text-anchor="middle" fill="#e7d39c" font-size="12" font-weight="800" letter-spacing="2">CORE</text>
+        </g>
+        <g id="scene-relay">
+          <path d="M390 255L407 242H437L454 255V285L437 298H407L390 285Z" fill="#243c4c" stroke="#77abd0" stroke-width="4"/>
+          <path d="M412 260L404 272L419 271L411 284M431 258L424 270L438 269L430 284" fill="none" stroke="#ffc783" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="scene-spark" d="M378 247L386 238M461 295L470 303M382 296L374 303" stroke="#ffca85" stroke-width="3" stroke-linecap="round"/>
+        </g>
+        <g id="scene-greenhouse">
+          <path d="M644 304V235Q700 163 756 235V304Z" fill="url(#scene-glass)" stroke="#8aa9a1" stroke-width="4"/>
+          <path d="M644 266H756M672 204V304M728 204V304M644 304H756" fill="none" stroke="#718e89" stroke-width="3"/>
+          <path class="scene-window" d="M650 268H670V298H650ZM678 268H696V298H678ZM704 268H724V298H704ZM732 268H750V298H732Z" fill="#162a36"/>
+          <circle class="scene-life-light" cx="700" cy="262" r="72" fill="url(#scene-life-glow)"/>
+          <path d="M686 297Q682 279 690 273M700 299Q700 278 700 268M713 298Q718 280 711 274" fill="none" stroke="#698b71" stroke-width="4" stroke-linecap="round"/>
+          <text x="700" y="354" text-anchor="middle" fill="#b5cbc0" font-size="12" font-weight="800" letter-spacing="2">LIFE ENGINE</text>
+        </g>
+        <g id="scene-sprouts" opacity="0">
+          <path d="M605 319Q601 296 590 291M605 319Q610 298 622 294M568 324Q567 309 558 304M778 319Q775 297 765 292M778 319Q785 302 797 299" fill="none" stroke="#a8e49e" stroke-width="5" stroke-linecap="round"/>
+          <ellipse cx="591" cy="291" rx="12" ry="5" transform="rotate(28 591 291)" fill="#9be0a0"/>
+          <ellipse cx="622" cy="294" rx="12" ry="5" transform="rotate(-28 622 294)" fill="#8dcf91"/>
+          <ellipse cx="558" cy="304" rx="10" ry="4" transform="rotate(30 558 304)" fill="#9be0a0"/>
+          <ellipse cx="765" cy="292" rx="11" ry="5" transform="rotate(28 765 292)" fill="#9be0a0"/>
+          <ellipse cx="797" cy="299" rx="11" ry="5" transform="rotate(-25 797 299)" fill="#8dcf91"/>
+        </g>
+        <g id="scene-frontier" opacity="0">
+          <path d="M837 287L854 256L871 287Z" fill="#6b867b" stroke="#9db8a2" stroke-width="3"/>
+          <path d="M824 312H885" stroke="#d4ba7e" stroke-width="4" stroke-dasharray="6 7"/>
+          <text x="854" y="336" text-anchor="middle" fill="#d8c590" font-size="10" font-weight="800" letter-spacing="1">NEW SITE</text>
+        </g>
+        <g id="scene-frontier-sprouts" opacity="0">
+          <path d="M828 309Q826 291 818 287M828 309Q834 292 844 288M881 309Q880 296 873 292" fill="none" stroke="#a8e49e" stroke-width="4" stroke-linecap="round"/>
+          <ellipse cx="818" cy="287" rx="9" ry="4" transform="rotate(28 818 287)" fill="#9be0a0"/>
+          <ellipse cx="844" cy="288" rx="9" ry="4" transform="rotate(-28 844 288)" fill="#8dcf91"/>
+          <ellipse cx="873" cy="292" rx="8" ry="4" transform="rotate(28 873 292)" fill="#9be0a0"/>
+        </g>
+        <g id="scene-mine-17" class="scene-machine" opacity="0">
+          <path d="M720 313H778L772 291H727Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M749 289V265L766 247M750 265L733 248" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="750" cy="263" r="7" fill="#e4c47e"/>
+          <path class="scene-salvage" d="M738 243L735 231M760 241L766 230M750 236V224" stroke="#f5dc9d" stroke-width="2"/>
+        </g>
+        <g id="scene-mine-7" class="scene-machine" opacity="0" transform="translate(220 0)">
+          <path d="M94 301H150L144 280H101Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M122 279V255L139 237M123 255L106 238" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="123" cy="253" r="7" fill="#e4c47e"/>
+        </g>
+        <g id="scene-power" class="scene-machine" opacity="0">
+          <path d="M596 312H646L640 287H602Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M623 285L610 302H623L616 318L636 295H624Z" fill="#ffe18c" stroke="#fff4c5" stroke-width="2"/>
+        </g>
+      </svg>
+      <button id="scene-action" class="scene-action" type="button" aria-label="Repair the broken relay for 4 scrap">
+        <span class="scene-action-glyph" aria-hidden="true">◇</span><span id="scene-action-label">PATCH</span>
+      </button>
+      <div class="scene-choice" id="scene-choice" role="group" aria-label="Choose the first expansion investment" hidden>
+        <button id="scene-choice-mine" class="scene-choice-button scene-choice-mine" type="button">
+          <strong>⛏ MINE · 12</strong><small id="scene-choice-mine-detail">More scrap, tighter power.</small>
+        </button>
+        <button id="scene-choice-power" class="scene-choice-button scene-choice-power" type="button">
+          <strong>ϟ POWER · 15</strong><small id="scene-choice-power-detail">More LIFE, steady mining.</small>
+        </button>
+      </div>
+      <button id="scene-awaken" class="scene-awaken" type="button" hidden>AWAKEN REGION <span aria-hidden="true">↗</span></button>
+      <button id="scene-return" class="scene-return" type="button" hidden>RETURN TO SAVE</button>
+      <span id="scene-practice-label" class="scene-practice-label" hidden>Temporary practice · nothing transfers</span>
+      <span id="opening-stage-live" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
     </div>
   </section>
 

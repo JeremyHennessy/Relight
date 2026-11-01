@@ -104,53 +104,160 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
 @media(prefers-reduced-motion:reduce){.tutorial-highlight{animation:none!important;transition:none!important}}
 @media(max-width:650px){.tutorial-controls{gap:5px}.tutorial-control{min-height:44px}.mission-banner{align-items:start}}
 
-/* First Light is a small playable opening; the full sandbox appears only
-   after its first real capacity problem has been solved. */
-.campaign-opening .resource-grid,.campaign-opening .sidebar,.campaign-opening .quick-tools,
-.campaign-opening .network-key,.campaign-opening .machine-readout,.campaign-opening #repair,
-.campaign-opening .tools-caption,.campaign-opening .mobile-feedback{display:none!important}
-.campaign-opening .world-intro h1{max-width:520px}
-.campaign-opening .world-section{min-height:300px;grid-template-columns:minmax(0,1fr) minmax(260px,.8fr);gap:12px}
-.campaign-opening .planet-scene{min-height:280px;max-height:320px}
-.campaign-opening .world-intro h1 em{color:#c5f5df;font-style:normal}
-.campaign-opening .mission-banner{grid-template-columns:72px minmax(0,1fr);}
-.campaign-opening .mission-progress{grid-column:2;justify-content:flex-start}
-.campaign-opening .campaign-action{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-top:12px;padding:0 16px;border:1px solid #8df2d4;border-radius:9px;background:linear-gradient(95deg,#71e2c6,#b5f6d8);color:#102b2a;font-size:11px;font-weight:900;letter-spacing:.055em;box-shadow:0 5px 18px #49dca72a}
-.campaign-opening .campaign-action[hidden]{display:none}
-.campaign-opening .campaign-action:disabled{opacity:.55;filter:saturate(.55)}
-.campaign-opening .campaign-wallet{display:block;margin-top:5px;color:#dfc99d;font-size:10px;font-weight:800;letter-spacing:.06em}
-.campaign-opening .campaign-wallet[hidden]{display:none}
-.campaign-opening .network-board{max-width:520px;margin-inline:auto;min-height:126px}
-.campaign-opening .tiles{gap:9px}
-.campaign-opening .tile[disabled]{opacity:.72;cursor:default}
-.campaign-opening .tile.suggested{opacity:1}
-.campaign-opening .tile.suggested:after{content:attr(data-campaign-action);font-size:8px}
-.campaign-opening .tutorial-controls{margin-top:12px}
-.campaign-opening .mission-copy p{max-width:620px}
-.campaign-opening .board-recovery{margin-top:13px}
-.campaign-opening #welcome .guide-steps[hidden]{display:none}
-.campaign-opening .intro-copy{max-width:380px}
+/* The first campaign is a single landscape, not a dashboard. */
+.opening-world{display:none}
+.opening-world[hidden]{display:none!important}
+.campaign-opening .world-section{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 20px;
+  align-items:center;min-height:0;margin:16px 0 22px
+}
+.campaign-opening .world-intro{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;
+  column-gap:18px;row-gap:2px;padding:0 5px 13px
+}
+.campaign-opening .world-intro>.eyebrow{display:none}
+.campaign-opening #world-title{
+  grid-column:1;grid-row:1;margin:0;color:#e8f4ec;
+  font:600 clamp(23px,3.3vw,34px)/1.08 'Space Grotesk',sans-serif;letter-spacing:-.04em
+}
+.campaign-opening .intro-copy{
+  grid-column:1;grid-row:2;max-width:560px;margin:3px 0 0;color:#b4c9c0;
+  font-size:clamp(11px,1.25vw,14px);line-height:1.45
+}
+.campaign-opening .resource-grid{
+  display:flex!important;grid-column:2;grid-row:1/3;margin:0
+}
+.campaign-opening .resource{display:none}
+.campaign-opening .resource:first-child{
+  display:block;padding:7px 11px;border:1px solid #486451;border-radius:999px;
+  background:rgba(23,44,45,.76);white-space:nowrap
+}
+.campaign-opening .resource:first-child .resource-label,
+.campaign-opening .resource:first-child .resource-note{display:none}
+.campaign-opening .resource:first-child .resource-value{margin:0}
+.campaign-opening .resource:first-child .resource-value strong{font-size:17px;color:#e6d39e}
+.campaign-opening .resource:first-child .unit{font-size:9px}
+.campaign-opening #save-status{grid-column:1/-1;margin:6px 0 0}
+.campaign-opening .planet-scene,.campaign-opening .mission-banner,
+.campaign-opening .workshop,.campaign-opening .mission-progress,
+.campaign-opening .sidebar,.campaign-opening .network-card{display:none!important}
+.campaign-opening .opening-world{
+  display:block;grid-column:1/-1;position:relative;width:100%;aspect-ratio:960/420;
+  min-height:300px;max-height:510px;overflow:hidden;border:1px solid #405b60;
+  border-radius:24px;background:linear-gradient(180deg,#142f42,#283f47 62%,#1a3037);
+  box-shadow:0 22px 70px #02081166;isolation:isolate
+}
+.opening-landscape{display:block;width:100%;height:100%}
+.scene-cable-base{fill:none;stroke:#596d6d;stroke-width:12;stroke-linecap:round}
+.scene-cable-dead{fill:none;stroke:#d68f62;stroke-width:5;stroke-linecap:round;stroke-dasharray:12 9}
+.scene-cable-live{fill:none;stroke:#87dfbd;stroke-width:5;stroke-linecap:round;opacity:0;transition:opacity .2s}
+.scene-flow{fill:none;stroke:#c9ffe9;stroke-width:8;stroke-linecap:round;stroke-dasharray:.055 .945;stroke-dashoffset:1;opacity:0}
+.scene-pulse .scene-flow{opacity:.95;animation:scene-current 950ms cubic-bezier(.2,.7,.25,1) both}
+.scene-spark{opacity:.95;animation:spark 1.2s ease-in-out infinite alternate}
+.is-powered .scene-cable-dead,.is-powered #scene-relay .scene-spark{opacity:0}
+.is-powered .scene-cable-live{opacity:.9}
+.is-powered #scene-relay path:not(.scene-spark){filter:drop-shadow(0 0 7px #a3f6df)}
+.scene-life-light{opacity:0;transition:opacity .4s}
+.greenhouse-lit .scene-life-light{opacity:.8}
+.greenhouse-lit .scene-window{fill:#a6e9c4;filter:drop-shadow(0 0 7px #92edc1)}
+.scene-machine{transition:opacity .2s}
+#scene-frontier-sprouts{transition:opacity .35s}
+.scene-machine-offline{filter:grayscale(.85);opacity:.55!important}
+.scene-salvage{animation:salvage-tick 1.5s ease-in-out infinite alternate}
+.has-awakened-region #scene-frontier{filter:drop-shadow(0 0 14px #b3efc1)}
+.is-overloaded #scene-reactor{filter:drop-shadow(0 0 9px #ffad71)}
+.scene-action,.scene-awaken{
+  position:absolute;z-index:5;display:flex;align-items:center;justify-content:center;gap:6px;
+  min-width:98px;min-height:50px;padding:8px 11px;border:1px solid #f2cf87;border-radius:12px;
+  background:linear-gradient(145deg,rgba(86,70,44,.97),rgba(39,45,45,.98));
+  box-shadow:0 7px 21px #071019a8,inset 0 0 0 1px #fff2;color:#fff0c3;
+  font-size:10px;font-weight:900;letter-spacing:.045em;line-height:1.15;
+  transform:translate(-50%,-50%);transition:transform .13s ease,filter .13s ease,box-shadow .13s ease
+}
+.scene-action[hidden],.scene-awaken[hidden]{display:none!important}
+.scene-action[data-action="repair"]{left:45.7%;top:64%}
+.scene-action[data-action="mine-kit"]{left:77.8%;top:74%}
+.scene-action[data-action="expansion"]{left:35%;top:74%}
+.scene-action[data-action="power"]{left:63%;top:72%}
+.scene-choice[hidden]{display:none!important}
+.scene-choice-button{
+  position:absolute;z-index:6;top:86%;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;
+  width:min(30%,250px);min-height:64px;padding:8px 10px;border:1px solid #e5c77e;border-radius:12px;
+  background:linear-gradient(145deg,rgba(52,64,53,.97),rgba(21,42,44,.98));
+  box-shadow:0 7px 21px #071019a8,inset 0 0 0 1px #fff2;color:#ffedbd;text-align:left;
+  transform:translate(-50%,-50%);transition:transform .13s ease,filter .13s ease,box-shadow .13s ease
+}
+.scene-choice-mine{left:35%}.scene-choice-power{left:65%}
+.scene-choice-button strong{font-size:10px;font-weight:900;letter-spacing:.04em;line-height:1.1}
+.scene-choice-button small{color:#c0d2c1;font-size:8px;line-height:1.3;overflow-wrap:anywhere}
+.scene-choice-button:hover{filter:brightness(1.16);transform:translate(-50%,-53%) scale(1.02);box-shadow:0 9px 23px #020b14bb,0 0 15px #ffe0a244}
+.scene-choice-button:active{transform:translate(-50%,-50%) scale(.96);filter:brightness(1.25)}
+.scene-choice-button:disabled{opacity:.55;filter:saturate(.5);cursor:not-allowed}
+.scene-choice-button:focus-visible{outline:3px solid #fff3bf;outline-offset:4px}
+.scene-action-glyph{font-size:18px;color:#ffe6a5}
+.scene-action:hover{filter:brightness(1.18);transform:translate(-50%,-53%) scale(1.035);box-shadow:0 10px 26px #030b14bb,0 0 19px #ffe0a255}
+.scene-action:active{transform:translate(-50%,-50%) scale(.92);filter:brightness(1.3)}
+.scene-action:disabled{opacity:.52;filter:saturate(.5);cursor:not-allowed}
+.scene-awaken{
+  left:50%;top:18%;min-width:148px;min-height:46px;border-color:#9df1d0;
+  background:linear-gradient(120deg,#28584f,#203d42);color:#d9ffeb;box-shadow:0 0 24px #7debc544
+}
+.scene-return{
+  position:absolute;z-index:6;top:12px;right:13px;min-height:44px;padding:7px 11px;
+  border:1px solid rgba(179,215,207,.5);border-radius:999px;background:#0d202a;
+  color:#d9e9df;font-size:9px;font-weight:900;letter-spacing:.06em
+}
+.scene-return[hidden],.scene-practice-label[hidden]{display:none!important}
+.scene-return:focus-visible{outline:3px solid #fff3bf;outline-offset:3px}
+.scene-practice-label{
+  position:absolute;z-index:4;top:24px;left:20px;color:#b7cbc2;font-size:10px;
+  text-shadow:0 1px 4px #08121b
+}
+.scene-action:focus-visible,.scene-awaken:focus-visible{
+  outline:3px solid #fff3bf;outline-offset:4px
+}
+.visually-hidden{
+  position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0
+}
+.campaign-opening footer{display:none}
 .guide-steps[hidden]{display:none}
-.campaign-opening .tile:focus-visible,.campaign-opening .campaign-action:focus-visible{outline:2px solid #c1ffe7;outline-offset:3px}
+@keyframes scene-current{0%{stroke-dashoffset:1;opacity:.2}15%{opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+@keyframes spark{from{opacity:.42}to{opacity:1}}
+@keyframes salvage-tick{from{opacity:.25}to{opacity:1}}
 @media(max-width:650px){
- .campaign-opening .world-section{min-height:0;margin:8px 0 10px}
- .campaign-opening .planet-scene{min-height:132px;max-height:140px}
- .campaign-opening #planet{width:min(48%,138px);top:3%}
- .campaign-opening .world-intro{padding:0}
- .campaign-opening .world-intro>*:not(#save-status){display:none}
- .campaign-opening .mission-number,.campaign-opening .mission-progress{display:none}
- .campaign-opening .mission-banner{grid-template-columns:minmax(0,1fr);margin:0 0 8px;padding:8px 10px;gap:0}
- .campaign-opening .mission-copy h2{font-size:16px}
- .campaign-opening .mission-copy p{font-size:10px;line-height:1.45}
- .campaign-opening .campaign-action{width:100%;min-height:44px;margin-top:8px}
- .campaign-opening .network-card{padding:12px}
- .campaign-opening .section-heading h2{font-size:17px}
- .campaign-opening .board-wrap{padding:7px 0 3px}
- .campaign-opening .network-board{min-height:100px;padding:8px}
- .campaign-opening .tiles{gap:5px}
- .campaign-opening .board-foot{display:none}
+  .campaign-opening .world-section{display:block;margin:12px 0 18px}
+  .campaign-opening .world-intro{padding:0 2px 10px;column-gap:8px}
+  .campaign-opening #world-title{font-size:clamp(21px,6vw,26px)}
+  .campaign-opening .intro-copy{max-width:210px;font-size:11px}
+  .campaign-opening .resource:first-child{padding:6px 9px}
+  .campaign-opening .resource:first-child .resource-value strong{font-size:15px}
+  .campaign-opening .opening-world{aspect-ratio:1.43;min-height:208px;max-height:330px;border-radius:18px}
+  .campaign-opening .opening-world.investment-choice{min-height:246px}
+  .campaign-opening .scene-action{min-width:86px;min-height:48px;padding:7px 8px;font-size:9px}
+  .campaign-opening .scene-action[data-action="repair"]{left:45.7%;top:64%}
+  .campaign-opening .scene-action[data-action="mine-kit"]{left:77%;top:74%}
+  .campaign-opening .scene-action[data-action="expansion"]{left:35%;top:74%}
+  .campaign-opening .scene-action[data-action="power"]{left:65%;top:74%}
+  .campaign-opening .scene-choice-button{top:78%;width:44%;min-height:64px;padding:6px 7px;gap:3px}
+  .campaign-opening .scene-choice-mine{left:28%}.campaign-opening .scene-choice-power{left:72%}
+  .campaign-opening .scene-choice-button strong{font-size:8px}
+  .campaign-opening .scene-choice-button small{font-size:8px;line-height:1.2}
+  .campaign-opening .scene-awaken{min-width:136px;min-height:46px;top:17%;font-size:9px}
+  .campaign-opening .scene-return{top:8px;right:8px;min-height:44px;font-size:8px}
+  .campaign-opening .scene-practice-label{top:17px;left:10px;max-width:125px;font-size:8px}
+  .campaign-opening .save-status{font-size:10px}
 }
 @media(max-width:370px){
- .campaign-opening .planet-scene{min-height:88px;max-height:90px}
- .campaign-opening #planet{width:min(36%,96px)}
+  .campaign-opening .world-section{margin-top:7px}
+  .campaign-opening .world-intro{padding-bottom:7px}
+  .campaign-opening .opening-world{aspect-ratio:1.5;min-height:190px;border-radius:15px}
+  .campaign-opening .scene-action{min-width:78px;min-height:46px;font-size:8px}
+}
+@media(prefers-reduced-motion:reduce){
+  .opening-world *, .opening-world *:before, .opening-world *:after{
+    animation:none!important;transition:none!important;scroll-behavior:auto!important
+  }
+  .is-powered .scene-cable-live{opacity:.9}
+  .scene-pulse .scene-flow{stroke-dasharray:none;stroke:#c9ffe9;opacity:.7}
 }

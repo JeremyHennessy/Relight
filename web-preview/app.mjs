@@ -25,6 +25,7 @@ const now=()=>Math.floor(Date.now()/1000);
 function setTextIfChanged(el,value){if(el&&el.textContent!==value)el.textContent=value;}
 let state=fresh(),selected=Machine.Generator,lastGoal=-1,lastPlanet=-1,lastCells="",lastNotice=0,saveClock=0,lastFrame=0,toastTimeout=null;
 let storageUnavailable=false,saveWriteProtected=false,lastVerifiedSave=null;
+let lastOpeningPhase=null,scenePulseTimeout=null;
 let firstPreferenceReadFailed=false,tutorialRecordReadFailed=false,tutorialRecordPresent=false;
 const storageWarning="Progress can't be saved in this browser. You can keep playing, but progress won't persist after reload.";
 const unreadableSaveWarning="An existing save can't be read. It was left untouched; this session won't persist after reload.";
@@ -231,6 +232,110 @@ function campaignLayout(){
   if(phase==="mine-kit"||phase==="first-region")return {columns:3,rows:2,indices:[12,13,14,17,18,19],target:phase==="mine-kit"?17:-1};
   return {columns:3,rows:3,indices:[7,8,9,12,13,14,17,18,19],target:phase==="expansion"?7:phase==="power"?9:-1};
 }
+function openingInvestmentForecast(machine){
+  const index=machine===Machine.Extractor?7:9;
+  const trial={...state,cells:state.cells.slice()};
+  trial.cells[index]=machine;
+  const forecast=rates(trial);
+  const net=forecast.mined-(isReady(state)?0:forecast.used);
+  const signed=(value)=>`${value>=0?"+":"−"}${Math.abs(value).toFixed(2)}`;
+  return {
+    rates:forecast,
+    detail:`MINE ${forecast.mined.toFixed(2)} gross/s · scrap ${signed(net)} net/s · LIFE ${forecast.restored.toFixed(2)}/s at ${Math.round(forecast.fraction*100)}% power`,
+    aria:`${machine===Machine.Extractor?"Build MINE first":"Build POWER first"} for ${PRICE[machine]} scrap. ${forecast.mined.toFixed(2)} gross mining per second, ${signed(net)} net scrap per second, and ${forecast.restored.toFixed(2)} LIFE recovery per second at ${Math.round(forecast.fraction*100)} percent power.`
+  };
+}
+function renderOpeningWorld(r,ready){
+  const scene=$("opening-world");
+  const phase=isCampaign(state)&&state.campaign.phase!=="open"?state.campaign.phase:null;
+  const action=$("scene-action"),awaken=$("scene-awaken");
+  const choice=$("scene-choice"),choiceMine=$("scene-choice-mine"),choicePower=$("scene-choice-power");
+  const practiceReturnButton=$("scene-return"),practiceLabel=$("scene-practice-label");
+  if(!phase){
+    scene.hidden=true;
+    action.hidden=true;awaken.hidden=true;choice.hidden=true;
+    practiceReturnButton.hidden=true;practiceLabel.hidden=true;
+    lastOpeningPhase=null;
+    return;
+  }
+  scene.hidden=false;
+  practiceReturnButton.hidden=!practiceMode;
+  practiceLabel.hidden=!practiceMode;
+  scene.dataset.phase=phase;
+  const relayConnected=state.cells[13]===Machine.Relay&&r.connected[13];
+  scene.dataset.powered=String(relayConnected);
+  scene.dataset.overloaded=String(r.fraction<1);
+  scene.classList.toggle("is-powered",relayConnected);
+  scene.classList.toggle("is-overloaded",r.fraction<1);
+  scene.classList.toggle("has-awakened-region",state.region>0);
+  const growth=state.region>0?1:Math.max(0,Math.min(1,state.restoration/TARGET(state.region)));
+  scene.dataset.growth=growth.toFixed(3);
+  scene.style.setProperty("--scene-growth",growth.toFixed(3));
+  $("scene-sprouts").style.opacity=String(Math.min(1,growth));
+  $("scene-frontier").style.opacity=state.region>0?"1":"0";
+  const frontierGrowth=state.region===1?Math.max(0,Math.min(1,state.restoration/25)):state.region>1?1:0;
+  $("scene-frontier-sprouts").style.opacity=String(frontierGrowth);
+  const machines=[
+    ["scene-mine-17",17,Machine.Extractor],
+    ["scene-mine-7",7,Machine.Extractor],
+    ["scene-power",9,Machine.Generator]
+  ];
+  for(const [id,index,machine] of machines){
+    const element=$(id),built=state.cells[index]===machine;
+    element.style.opacity=built?"1":"0";
+    element.classList.toggle("scene-machine-offline",built&&!r.connected[index]);
+  }
+  const lit=relayConnected&&state.cells[14]===Machine.Restorer&&r.connected[14];
+  scene.classList.toggle("greenhouse-lit",lit);
+  const choiceOpen=phase==="investment-choice";
+  scene.classList.toggle("investment-choice",choiceOpen);
+  choice.hidden=!choiceOpen;
+  if(choiceOpen){
+    const mine=openingInvestmentForecast(Machine.Extractor),power=openingInvestmentForecast(Machine.Generator);
+    $("scene-choice-mine-detail").textContent=mine.detail;
+    $("scene-choice-power-detail").textContent=power.detail;
+    choiceMine.disabled=state.scrap<PRICE[Machine.Extractor];
+    choicePower.disabled=state.scrap<PRICE[Machine.Generator];
+    choiceMine.setAttribute("aria-label",mine.aria);
+    choicePower.setAttribute("aria-label",power.aria);
+  }
+  let target=null;
+  if(phase==="repair")target={label:"PATCH LINK",aria:"Patch the broken relay, spending 4 scrap",cost:4,position:"repair"};
+  if(phase==="mine-kit")target={label:"INSTALL MINE",aria:"Install your earned MINE kit at the marked greenhouse site",cost:0,position:"mine-kit"};
+  if(phase==="expansion")target={label:"PLACE MINE",aria:"Place a second MINE at the newly opened site for 12 scrap",cost:PRICE[Machine.Extractor],position:"expansion"};
+  if(phase==="power")target={label:"PLACE POWER",aria:"Place POWER beside LIFE for 15 scrap",cost:PRICE[Machine.Generator],position:"power"};
+  if(phase==="investment-second"){
+    const isMine=state.campaign.firstInvestment==="power";
+    target=isMine?
+      {label:"PLACE MINE",aria:"Place the second MINE for 12 scrap; this completes both first investments",cost:PRICE[Machine.Extractor],position:"expansion"}:
+      {label:"PLACE POWER",aria:"Place POWER beside LIFE for 15 scrap; this completes both first investments",cost:PRICE[Machine.Generator],position:"power"};
+  }
+  action.hidden=!target||choiceOpen;
+  if(target){
+    action.dataset.action=target.position;
+    setTextIfChanged($("scene-action-label"),target.label);
+    action.setAttribute("aria-label",target.aria);
+    action.disabled=state.scrap<target.cost;
+  }
+  const canAwaken=phase==="first-region"&&ready;
+  awaken.hidden=!canAwaken;
+  if(canAwaken)awaken.setAttribute("aria-label","Awaken the first greenhouse region and reveal a new site");
+  if(lastOpeningPhase!==phase){
+    setTextIfChanged($("opening-stage-live"),$("world-title").textContent+". "+$("world-copy").textContent);
+    lastOpeningPhase=phase;
+  }
+}
+
+function pulseOpeningScene(){
+  const scene=$("opening-world");
+  scene.classList.remove("scene-pulse");
+  if(scenePulseTimeout)clearTimeout(scenePulseTimeout);
+  // Force a style boundary so a second, legitimate machine placement can
+  // replay the short visual response without changing model state.
+  void scene.offsetWidth;
+  scene.classList.add("scene-pulse");
+  scenePulseTimeout=setTimeout(()=>scene.classList.remove("scene-pulse"),1050);
+}
 function runCampaignAction(event){
   const phase=state.campaign?.phase;
   let result;
@@ -238,12 +343,39 @@ function runCampaignAction(event){
   else if(phase==="mine-kit")result=redeemMineKit(state,17);
   else if(phase==="expansion")result=place(state,7,Machine.Extractor);
   else if(phase==="power")result=place(state,9,Machine.Generator);
+  else if(phase==="investment-second")result=state.campaign.firstInvestment==="mine"?
+    place(state,9,Machine.Generator):place(state,7,Machine.Extractor);
   else return;
   notice(result.message,!result.ok);
-  if(result.ok){persist();render(true);}
+  if(result.ok){persist();render(true);pulseOpeningScene();}
   if(event?.detail===0&&result.ok){
-    const next=document.querySelector(".tile.suggested")||($("campaign-action").hidden?$("mission-title"):$("campaign-action"));
-    next?.focus({preventScroll:true});
+    const next=$("scene-awaken").hidden?$("scene-action"):$("scene-awaken");
+    const target=next.hidden?$("world-title"):next;
+    target?.focus({preventScroll:true});
+  }
+}
+function chooseOpeningInvestment(machine,index,event){
+  if(state.campaign?.version!==2||state.campaign.phase!=="investment-choice")return;
+  const result=place(state,index,machine);
+  notice(result.message,!result.ok);
+  if(result.ok){
+    persist();render(true);pulseOpeningScene();
+    if(event?.detail===0){
+      const next=$("scene-action").hidden?$("world-title"):$("scene-action");
+      next.focus({preventScroll:true});
+    }
+  }
+}
+function awakenRegion(event){
+  const previousScrap=state.scrap;
+  const result=claim(state);
+  if(!result.ok){notice(result.message,true);return;}
+  persist();render(true);
+  showClaimRecap(state.scrap-previousScrap);
+  if(event?.detail===0){
+    const next=isCampaign(state)&&state.campaign.phase!=="open"?
+      ($("scene-action").hidden?$("world-title"):$("scene-action")):$("region-state");
+    next.focus({preventScroll:true});
   }
 }
 function renderCampaign(){
@@ -259,19 +391,25 @@ function renderCampaign(){
       "mine-kit":["You earned a MINE kit","Install your free starter MINE at the highlighted site. The kit stays yours even if scrap runs out.","INSTALL EARNED MINE · FREE"],
       "first-region":["Keep the greenhouse alive","The MINE now feeds LIFE. Let restoration reach 100%, then awaken this region."],
       expansion:["A new site is open","Your first awakening revealed a new site. Place a second MINE there.","PLACE MINE · 12 SCRAP"],
-      power:["The reactor is strained","Two MINEs plus LIFE exceed reactor capacity. Place POWER beside the greenhouse.","PLACE POWER · 15 SCRAP"]
+      power:["The reactor is strained","Two MINEs plus LIFE exceed reactor capacity. Place POWER beside the greenhouse.","PLACE POWER · 15 SCRAP"],
+      "investment-choice":["Choose your first investment","MINE brings more gross scrap but LIFE runs at reduced power. POWER raises recovery while mining stays lower. The other site opens at 25 recovery."],
+      "investment-growth":["Your first choice is working","Restore 25 points in this region to open the other site. Your chosen machine keeps producing while the greenhouse grows."],
+      "investment-second":["The frontier opens","25 real recovery points restored. Add the other investment to complete the network and unlock the full grid."]
     };
     const [title,copy,action]=prompts[phase]||prompts.repair;
-    const environmentCopy={
-      repair:"One broken relay keeps the ruined greenhouse dark.",
-      restore:"The relay is repaired. LIFE is restoring the dark greenhouse.",
-      "mine-kit":"The greenhouse is recovering. An earned MINE kit opens automation.",
-      "first-region":"MINE feeds LIFE. Keep this region supplied until it awakens.",
-      expansion:"Your first region is awake. A new site opens the next network step.",
-      power:"Two MINEs and LIFE strain the reactor. Add POWER beside the greenhouse."
-    }[phase];
-    setTextIfChanged($("world-title"),"A reactor still burns.");
-    setTextIfChanged($("world-copy"),environmentCopy||"The planet is recovering.");
+    const sceneCopy={
+      repair:["First Light","Patch the broken link for 4 scrap."],
+      restore:["Power returns","Watch LIFE work. A MINE kit is earned at 5 restored."],
+      "mine-kit":["Scrap becomes a tool","Place your free MINE kit at the marked site."],
+      "first-region":["The greenhouse grows","MINE feeds LIFE. Awaken the region when recovery is complete."],
+      expansion:["A new frontier","Your first region is awake. A second site now joins the network."],
+      power:["The reactor strains","The extra MINE is straining capacity. Add POWER beside LIFE."],
+      "investment-choice":["Choose your first investment",state.restoration>=25?"25 recovery points are ready. Choose MINE or POWER, then add the other site.":"MINE means more scrap; POWER means steadier LIFE. The second site opens at 25 recovery."],
+      "investment-growth":["Your choice is growing","Restore "+Math.floor(state.restoration)+" / 25 points to open the other site."],
+      "investment-second":["A new site is ready","25 recovery points restored. Build the other investment to finish the opening."]
+    }[phase]||["First Light","Restore the greenhouse."];
+    setTextIfChanged($("world-title"),sceneCopy[0]);
+    setTextIfChanged($("world-copy"),sceneCopy[1]);
     setTextIfChanged($("mission-eyebrow"),"BLACKOUT · FIRST LIGHT");
     setTextIfChanged($("mission-number"),phase==="repair"?"01":phase==="restore"?"02":phase==="mine-kit"?"03":phase==="first-region"?"04":phase==="expansion"?"05":"06");
     setTextIfChanged($("mission-title"),title);
@@ -607,6 +745,11 @@ function choose(machine,manual=true){
 }
 document.querySelectorAll(".tool, .quick-tool").forEach(el=>el.addEventListener("click",()=>choose(Number(el.dataset.machine))));
 $("campaign-action").addEventListener("click",runCampaignAction);
+$("scene-action").addEventListener("click",runCampaignAction);
+$("scene-choice-mine").addEventListener("click",event=>chooseOpeningInvestment(Machine.Extractor,7,event));
+$("scene-choice-power").addEventListener("click",event=>chooseOpeningInvestment(Machine.Generator,9,event));
+$("scene-awaken").addEventListener("click",awakenRegion);
+$("scene-return").addEventListener("click",returnToSavedWorld);
 function tap(index,event){
   if(isCampaign(state)&&state.campaign.phase!=="open"){
     if(index===campaignLayout().target)runCampaignAction(event);
@@ -629,16 +772,7 @@ $("upgrade-mining").addEventListener("click",()=>{
 $("upgrade-power").addEventListener("click",()=>{
   const r=upgrade(state,false);notice(r.message,!r.ok);if(r.ok){persist();render(true);}
 });
-$("revive").addEventListener("click",event=>{
-  const previousScrap=state.scrap;
-  const r=claim(state);
-  if(!r.ok)notice(r.message,true);
-  if(r.ok){
-    persist();render(true);
-    showClaimRecap(state.scrap-previousScrap);
-    if(event.detail===0)$("region-state").focus({preventScroll:true});
-  }
-});
+$("revive").addEventListener("click",awakenRegion);
 $("dismiss-recap").addEventListener("click",()=>{$("progress-recap").hidden=true;});
 $("repair").addEventListener("click",()=>{
   if(!window.confirm("Reset the network to its starting layout? Structures will not be refunded. Region and upgrades stay saved."))return;
@@ -697,6 +831,7 @@ function render(force=false){
   if(!valid(state)){console.error("Invalid world, resetting safely");state=fresh();persist();}
   const campaignOpening=renderCampaign();
   const r=rates(state),m=mission(state),ready=isReady(state),percentage=Math.min(100,100*state.restoration/TARGET(state.region));
+  renderOpeningWorld(r,ready);
   const explanation=machineExplanation(r);
   if($("machine-readout").textContent!==explanation)$("machine-readout").textContent=explanation;
   $("sector").textContent="SECTOR "+String(state.region+1).padStart(2,"0");

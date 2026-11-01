@@ -3,7 +3,7 @@
 // reconstructed or claimed to be identical.
 import assert from "node:assert/strict";
 import {chromium} from "playwright";
-import {fresh,freshCampaign,Machine,MAX_OFFLINE,MINING_OFFLINE,advance,rates,estimateRecoverySeconds} from "./model.mjs";
+import {fresh,freshCampaign,Machine,MAX_OFFLINE,MINING_OFFLINE,advance,rates,claim,TARGET,estimateRecoverySeconds} from "./model.mjs";
 
 const origin=process.env.RELIGHT_BROWSER_URL||"http://127.0.0.1:8765";
 const saveKey="relight.webplaytest.v1";
@@ -125,6 +125,8 @@ async function closeGuide(page){
   if(await page.locator("#welcome").evaluate(element=>element.open))
     await page.locator("#dismiss-help").click({timeout:5000});
 }
+async function clickSceneAction(page){await page.locator("#scene-action").click();}
+async function claimSceneRegion(page){await page.locator("#scene-awaken").click();}
 async function build(page,machine,index){
   await closeGuide(page);
   const quick=page.locator(`.quick-tool[data-machine="${machine}"]`);
@@ -165,19 +167,19 @@ async function runAutosaveTicks(page,count=40){
 }
 async function buildGuidedNetwork(page){
   if(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening"))){
-    const isolatedPractice=await page.locator("#tutorial-return").isVisible();
-    await page.locator("#campaign-action").click();
+    const isolatedPractice=await page.locator("#scene-return").isVisible();
+    await clickSceneAction(page);
     await runAutosaveTicks(page,48);
     if(isolatedPractice){
-      assert.match(await page.locator("#campaign-action").textContent(),/EARNED MINE/,
+      assert.match(await page.locator("#scene-action").textContent(),/INSTALL MINE/,
         "practice restoration earns the starter kit in its isolated in-memory world");
     }else{
       assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")))).campaign.phase,"mine-kit",
         "restoration earns and saves the starter kit");
     }
-    await page.locator("#campaign-action").click();
+    await clickSceneAction(page);
     await runAutosaveTicks(page,600);
-    await page.locator("#revive").waitFor({state:"visible"});
+    await page.locator("#scene-awaken").waitFor({state:"visible"});
     return;
   }
   await build(page,Machine.Generator,19);
@@ -190,9 +192,12 @@ async function buildGuidedNetwork(page){
 }
 async function unlockCampaignPower(page){
   if(!await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")))return;
-  await page.locator("#campaign-action").click();
-  assert.match(await page.locator("#mission-title").textContent(),/reactor is strained/);
-  await page.locator("#campaign-action").click();
+  assert.equal(await page.locator("#scene-choice-mine").isVisible(),true);
+  await page.locator("#scene-choice-mine").click();
+  assert.match(await page.locator("#world-copy").textContent(),/25 points/);
+  await runAutosaveTicks(page,240);
+  await page.locator("#scene-action").waitFor({state:"visible"});
+  await clickSceneAction(page);
   assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),false,
     "the full sandbox opens only after the actual POWER placement");
 }
@@ -257,6 +262,34 @@ try{
       assert.equal(await page.evaluate(()=>window.__relightTest.writeEvents()),0);
     }));
   }
+
+  await check("invalid v2 anchor and pre-choice records remain byte-protected through reload and lifecycle",async()=>{
+    const brokenNetwork=freshCampaign();
+    brokenNetwork.cells[13]=Machine.Relay;brokenNetwork.cells[14]=Machine.Relay;
+    brokenNetwork.cells[17]=Machine.Extractor;brokenNetwork.cells[7]=Machine.Extractor;
+    brokenNetwork.region=1;brokenNetwork.restoration=12;brokenNetwork.scrap=48;
+    brokenNetwork.campaign={version:2,phase:"investment-growth",mineKit:"redeemed",firstInvestment:"mine"};
+    brokenNetwork.savedAt=Math.floor(Date.now()/1000);
+    const badPreChoice=freshCampaign();
+    badPreChoice.cells[13]=Machine.Relay;badPreChoice.cells[17]=Machine.Extractor;
+    badPreChoice.region=0;badPreChoice.restoration=40;badPreChoice.scrap=48;
+    badPreChoice.campaign={version:2,phase:"first-region",mineKit:"redeemed",firstInvestment:"power"};
+    badPreChoice.savedAt=Math.floor(Date.now()/1000);
+    for(const [label,state] of [["missing LIFE anchor",brokenNetwork],["pre-choice investment marker",badPreChoice]]){
+      const original=JSON.stringify(state);
+      await withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
+        assert.match((await status(page)).text,/existing save can't be read/i,label+" shows the protected-save warning");
+        const initialWrites=await page.evaluate(()=>window.__relightTest.writeEvents());
+        await build(page,Machine.Generator,19);await runAutosaveTicks(page,12);
+        await hideAndNotify(page);await pagehide(page);
+        assert.equal(await raw(page),original,label+" bytes survive play and lifecycle events");
+        assert.equal(await page.evaluate(()=>window.__relightTest.writeEvents()),initialWrites,label+" causes no SAVE overwrite");
+        await page.reload({waitUntil:"networkidle"});
+        assert.equal(await raw(page),original,label+" bytes survive reload");
+        assert.match((await status(page)).text,/existing save can't be read/i,label+" remains protected after reload");
+      });
+    }
+  });
 
   await check("a save read failure immediately before write protects the verified snapshot",()=>withPage({
     initial:{[saveKey]:recognizable,[firstKey]:"yes"}
@@ -475,9 +508,9 @@ try{
     assert.equal(await raw(page),saved,"dismissing onboarding does not alter the world save");
     await page.locator("#how-to-play").click();
     await page.locator("#begin").click();
-    assert.equal(await page.locator("#tutorial-return").isVisible(),true,
+    assert.equal(await page.locator("#scene-return").isVisible(),true,
       "replay after Escape is visibly marked as temporary practice");
-    assert.match(await page.locator("#tutorial-mode-label").textContent(),/Temporary practice/);
+    assert.match(await page.locator("#scene-practice-label").textContent(),/Temporary practice/);
     assert.equal(await raw(page),saved,"starting replay after Escape preserves the saved world bytes");
   }));
 
@@ -547,74 +580,136 @@ try{
   }));
 
   await check("unknown future campaign versions remain byte-protected",()=>{
-    const future=freshCampaign();future.campaign.version=2;
+    const future=freshCampaign();future.campaign.version=3;
     const original=JSON.stringify(future);
     return withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
       assert.equal(await raw(page),original,"startup does not normalize an unknown future campaign");
       assert.match((await status(page)).text,/existing save can't be read/i);
       await page.locator("#how-to-play").click();await page.locator("#begin").click();
-      await page.locator("#campaign-action").click();await runAutosaveTicks(page,48);await pagehide(page);
+      await clickSceneAction(page);await runAutosaveTicks(page,48);await pagehide(page);
       assert.equal(await raw(page),original,"volatile play and lifecycle writes keep the unknown save unchanged");
     });
   });
 
-  await check("first light is a staged, saved campaign with an earned MINE and contextual POWER unlock",()=>withPage({
+  await check("first light is a scene-first saved campaign with earned MINE and contextual POWER",()=>withPage({
     width:320,height:640,initial:{}
   },async page=>{
     assert.equal(await page.locator("#welcome").evaluate(el=>el.open),false,"fresh opening begins in play, not a lesson modal");
     assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),true);
-    assert.match(await page.locator("#mission-title").textContent(),/greenhouse/i);
-    assert.equal(await page.locator(".tile:visible").count(),3,"the first view contains only the reactor, broken link and greenhouse");
+    assert.match(await page.locator("#world-title").textContent(),/First Light/);
+    assert.equal(await page.locator("#opening-world").isVisible(),true,"opening is a shared field scene");
+    assert.equal(await page.locator(".tile:visible").count(),0,"generic grid is hidden during the opening");
     assert.equal(await page.locator(".sidebar").isVisible(),false);
-    assert.equal(await page.locator(".resource-grid").isVisible(),false);
-    assert.equal(await page.locator(".tile:enabled").count(),1,"only the repair tile accepts input");
+    assert.equal(await page.locator(".resource:visible").count(),1,"only scrap remains in the opening HUD");
+    for(const id of ["#scene-reactor","#scene-relay","#scene-greenhouse","#scene-action"]){
+      const rect=await page.locator(id).boundingBox();assert.ok(rect&&rect.y>=0&&rect.y+rect.height<=640,`${id} fits the opening viewport`);
+    }
+    assert.match(await page.locator("#scene-action").getAttribute("aria-label"),/broken relay/i);
     let saved=JSON.parse(await raw(page));
     assert.equal(saved.campaign.phase,"repair");assert.equal(saved.scrap,10);
-    await page.locator('[data-index="13"]').click();
+    await page.locator("#scene-action").click();
     saved=JSON.parse(await raw(page));
-    assert.equal(saved.campaign.phase,"restore");assert.equal(saved.cells[13],Machine.Relay);
+    assert.equal(saved.campaign.phase,"restore");assert.equal(saved.cells[13],Machine.Relay);assert.equal(saved.scrap,6);
+    assert.equal(await page.locator("#opening-world").getAttribute("data-powered"),"true");
     await page.reload({waitUntil:"networkidle"});
-    assert.match(await page.locator("#mission-title").textContent(),/greenhouse is waking/i,
+    assert.match(await page.locator("#world-title").textContent(),/Power returns/i,
       "the repaired connection resumes from the saved campaign state");
+    assert.equal(await page.locator("#opening-world").getAttribute("data-powered"),"true");
     await runAutosaveTicks(page,48);
     saved=JSON.parse(await raw(page));
     assert.equal(saved.campaign.phase,"mine-kit","actual simulated restoration earns the one-time kit");
-    assert.ok(saved.scrap<1,"the kit can be earned after the ordinary scrap reserve is exhausted");
-    assert.equal(await page.locator(".tile:visible").count(),6,"the earned kit reveals the next small construction area");
+    assert.ok(saved.scrap<1,"the kit can be earned after ordinary scrap runs out");
     await page.reload({waitUntil:"networkidle"});
     assert.equal(JSON.parse(await raw(page)).campaign.mineKit,"earned","earned-kit milestone survives reload");
-    assert.match(await page.locator("#campaign-action").textContent(),/EARNED MINE/);
+    assert.match(await page.locator("#scene-action").textContent(),/INSTALL MINE/);
     const scrapBeforeKit=JSON.parse(await raw(page)).scrap;
-    await page.locator('[data-index="17"]').click();
+    await page.locator("#scene-action").click();
     saved=JSON.parse(await raw(page));
     assert.equal(saved.cells[17],Machine.Extractor);
     assert.equal(saved.scrap,scrapBeforeKit,"redeeming the kit does not spend ordinary scrap");
     assert.equal(saved.campaign.phase,"first-region");
-    assert.equal(await page.locator("#revive").isVisible(),false,"early region claim stays unavailable");
+    assert.equal(await page.locator("#scene-awaken").isVisible(),false,"early region claim stays unavailable");
     await runAutosaveTicks(page,600);
-    await page.locator("#revive").waitFor({state:"visible"});
-    await page.locator("#revive").focus();await page.keyboard.press("Enter");
+    await page.locator("#scene-awaken").waitFor({state:"visible"});
+    await page.locator("#scene-awaken").focus();await page.keyboard.press("Enter");
     saved=JSON.parse(await raw(page));
-    assert.equal(saved.region,1);assert.equal(saved.campaign.phase,"expansion");
-    assert.match(await page.locator("#progress-recap").innerText(),/Claimed \+50\.0 scrap/);
-    assert.equal(await page.evaluate(()=>document.activeElement.id),"region-state","keyboard claim keeps focus on contextual status");
-    await page.evaluate(()=>document.querySelector("#revive").dispatchEvent(new MouseEvent("click",{bubbles:true})));
+    assert.equal(saved.region,1);assert.equal(saved.campaign.phase,"investment-choice");
+    assert.equal(await page.evaluate(()=>document.activeElement.id),"world-title","keyboard claim focuses the choice stage heading");
+    await page.locator("#scene-awaken").evaluate(el=>el.dispatchEvent(new MouseEvent("click",{bubbles:true})));
     assert.equal(JSON.parse(await raw(page)).region,1,"a repeated claim cannot duplicate the reward");
     await page.reload({waitUntil:"networkidle"});
-    assert.equal(JSON.parse(await raw(page)).campaign.phase,"expansion","the first claim and new site survive reload");
-    assert.equal(await page.locator(".tile:visible").count(),9);
-    await page.locator("#campaign-action").click();
-    saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"power");
-    assert.match(await page.locator("#mission-title").textContent(),/reactor is strained/i);
-    await page.locator("#campaign-action").click();
+    assert.equal(JSON.parse(await raw(page)).campaign.phase,"investment-choice","the first claim and both world options survive reload");
+    assert.equal(await page.locator("#scene-choice-mine").isVisible(),true);
+    assert.equal(await page.locator("#scene-choice-power").isVisible(),true);
+    assert.match(await page.locator("#scene-choice-mine-detail").textContent(),/gross\/s.*net\/s.*LIFE/i);
+    assert.match(await page.locator("#scene-choice-power-detail").textContent(),/gross\/s.*net\/s.*LIFE/i);
+    const originalChoice=await raw(page);
+    assert.equal(JSON.parse(originalChoice).campaign.phase,"investment-choice");
+    await page.locator("#scene-choice-mine").click();
+    saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"investment-growth");
+    assert.equal(saved.campaign.firstInvestment,"mine");assert.equal(saved.cells[7],Machine.Extractor);
+    await page.locator("#scene-choice-mine").evaluate(el=>el.dispatchEvent(new MouseEvent("click",{bubbles:true})));
+    assert.equal(JSON.parse(await raw(page)).scrap,saved.scrap,"repeated selection cannot spend twice");
+    await page.reload({waitUntil:"networkidle"});
+    assert.equal(JSON.parse(await raw(page)).campaign.phase,"investment-growth","first choice survives reload");
+    assert.equal(await page.locator("#scene-action").isVisible(),false,"the second site remains locked before recovery 25");
+    saved=JSON.parse(await raw(page));saved.restoration=25;saved.campaign.phase="investment-second";
+    await page.evaluate(value=>window.__relightTest.setRaw("relight.webplaytest.v1",value),JSON.stringify(saved));
+    await page.reload({waitUntil:"networkidle"});
+    assert.equal(await page.locator("#scene-action").isVisible(),true,"the model-earned threshold reveals the other site");
+    assert.equal(await page.locator("#opening-world").getAttribute("data-growth"),"1.000");
+    await clickSceneAction(page);
     saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"open");
     assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),false);
-    assert.equal(await page.locator(".tile:visible").count(),25,"the full sandbox appears after the actual POWER placement");
+    assert.equal(await page.locator(".tile:visible").count(),25,"full grid appears after actual POWER placement");
     assert.equal(await page.locator(".sidebar").isVisible(),true);
     await page.reload({waitUntil:"networkidle"});
-    assert.equal(JSON.parse(await raw(page)).campaign.phase,"open","POWER unlock is persisted after reload");
+    assert.equal(JSON.parse(await raw(page)).campaign.phase,"open","POWER unlock persists after reload");
     assert.equal(await page.locator(".sidebar").isVisible(),true);
   }));
+
+
+  await check("POWER-first route recovers from zero scrap and opens MINE only at 25 actual points",()=>{
+    const choice=freshCampaign();choice.cells[13]=Machine.Relay;choice.cells[17]=Machine.Extractor;
+    choice.campaign={version:2,phase:"first-region",mineKit:"redeemed",firstInvestment:null};
+    choice.region=0;choice.restoration=TARGET(0);choice.scrap=15;choice.savedAt=Math.floor(Date.now()/1000);
+    assert.equal(claim(choice).ok,true);assert.equal(choice.scrap,65);
+    return withPage({width:390,height:844,initial:{[saveKey]:JSON.stringify(choice),[firstKey]:"yes"}},async page=>{
+      const before=JSON.parse(await raw(page));assert.equal(before.campaign.phase,"investment-choice");
+      assert.match(await page.locator("#scene-choice-power-detail").textContent(),/1\.00 gross\/s.*\+0\.30 net\/s.*0\.84\/s/);
+      await page.locator("#scene-choice-power").click();
+      let saved=JSON.parse(await raw(page));assert.ok(Math.abs((before.scrap-saved.scrap)-15)<0.5,"POWER selection spends its exact cost, apart from less than half a second of idle income");assert.equal(saved.campaign.phase,"investment-growth");
+      saved.scrap=0;await page.evaluate(({key,value})=>window.__relightTest.setRaw(key,JSON.stringify(value)),{key:saveKey,value:saved});
+      await page.reload({waitUntil:"networkidle"});
+      assert.equal(JSON.parse(await raw(page)).campaign.firstInvestment,"power","POWER choice persists across reload");
+      await runAutosaveTicks(page,600);
+      saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"investment-second");
+      assert.ok(saved.restoration>=25);assert.ok(saved.scrap>0,"one connected MINE fuels the LIFE boost from zero saved scrap");
+      assert.equal(await page.locator("#scene-action").isVisible(),true);
+      await page.locator("#scene-action").click();
+      saved=JSON.parse(await raw(page));assert.equal(saved.cells[7],Machine.Extractor);assert.equal(saved.campaign.phase,"open");
+      assert.equal(rates(saved).fraction,1,"the second investment converges to a balanced network");
+    });
+  });
+
+  await check("v1 campaign is not migrated and keeps its existing MINE-then-POWER scene route",()=>{
+    const old={...freshCampaign(),region:1,scrap:50,savedAt:Math.floor(Date.now()/1000)};
+    old.cells[13]=Machine.Relay;old.cells[17]=Machine.Extractor;
+    old.campaign={version:1,phase:"expansion",mineKit:"redeemed"};
+    const original=JSON.stringify(old);
+    return withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
+      assert.equal(await raw(page),original,"v1 save bytes are not upgraded or normalized");
+      assert.equal(await page.locator("#scene-choice").isVisible(),false);
+      assert.equal(await page.locator("#scene-action").getAttribute("aria-label").then(s=>/second MINE/.test(s)),true);
+      await clickSceneAction(page);
+      let state=JSON.parse(await raw(page));assert.equal(state.campaign.version,1);assert.equal(state.campaign.phase,"power");
+      assert.equal(Object.hasOwn(state.campaign,"firstInvestment"),false);
+      await page.reload({waitUntil:"networkidle"});
+      assert.equal(JSON.parse(await raw(page)).campaign.phase,"power");
+      await clickSceneAction(page);state=JSON.parse(await raw(page));
+      assert.equal(state.campaign.phase,"open");assert.equal(state.campaign.version,1);
+    });
+  });
 
   await check("practice replay isolates every world write and returns the real saved world",()=>withPage({
     width:390,height:844,initial:{
@@ -626,13 +721,13 @@ try{
     await page.locator("#how-to-play").click();
     assert.match(await page.locator("#welcome-copy").textContent(),/temporary practice network/i);
     await page.locator("#begin").click();
-    assert.equal(await page.locator("#tutorial-return").isVisible(),true);
-    assert.match(await page.locator("#tutorial-mode-label").textContent(),/Temporary practice/);
+    assert.equal(await page.locator("#scene-return").isVisible(),true);
+    assert.match(await page.locator("#scene-practice-label").textContent(),/Temporary practice/);
     const savedBefore=await raw(page);
     assert.equal(savedBefore,originalSave,"opening practice leaves original SAVE bytes unchanged");
     await buildGuidedNetwork(page);
-    assert.equal(await page.locator("#revive").isVisible(),true);
-    await page.locator("#revive").click();
+    assert.equal(await page.locator("#scene-awaken").isVisible(),true);
+    await claimSceneRegion(page);
     await unlockCampaignPower(page);
     await page.locator("#upgrade-mining").click();
     await page.evaluate(()=>{window.confirm=()=>true;});
@@ -672,9 +767,9 @@ try{
       "practice construction and reset never alter the real grid");
 
     await page.locator("#how-to-play").click();await page.locator("#begin").click();
-    await page.locator("#campaign-action").click();
+    await clickSceneAction(page);
     await page.reload({waitUntil:"networkidle"});
-    assert.equal(await page.locator("#tutorial-return").isVisible(),false,
+    assert.equal(await page.locator("#scene-return").isVisible(),false,
       "reload exits temporary practice rather than restoring its separate state");
     const afterReload=JSON.parse(await raw(page));
     assert.equal(afterReload.region,2);assert.equal(afterReload.scrap,77);
@@ -691,7 +786,7 @@ try{
       const before=JSON.parse(await raw(page));
       await page.locator("#how-to-play").click();await page.locator("#begin").click();
       await page.evaluate(()=>{window.__practiceClockOffset=10000;});
-      await page.locator("#tutorial-return").click();
+      await page.locator("#scene-return").click();
       const afterReturn=JSON.parse(await raw(page));
       assert.ok(Math.abs(afterReturn.scrap-(before.scrap+3))<.001,
         "10 seconds of one connected mine and one LIFE yield the model's +3 net scrap");
@@ -712,10 +807,10 @@ try{
     const corrupt="{not valid save bytes";
     await withPage({initial:{[saveKey]:corrupt,[firstKey]:"yes"}},async page=>{
       await page.locator("#how-to-play").click();await page.locator("#begin").click();
-      await page.locator("#campaign-action").click();
+      await clickSceneAction(page);
       await runAutosaveTicks(page,12);await hideAndNotify(page);await pagehide(page);
       assert.equal(await raw(page),corrupt,"practice lifecycle actions preserve unreadable SAVE bytes");
-      await page.locator("#tutorial-return").click();
+      await page.locator("#scene-return").click();
       assert.equal(await raw(page),corrupt,"return cannot overwrite a corrupt protected save");
       assert.match((await status(page)).text,/existing save can't be read/i);
     });
@@ -725,10 +820,10 @@ try{
     await withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
       await page.locator("#how-to-play").click();await page.locator("#begin").click();
       await page.evaluate(value=>window.__relightTest.setRaw("relight.webplaytest.v1",value),external);
-      await page.locator("#campaign-action").click();
+      await clickSceneAction(page);
       await runAutosaveTicks(page,12);await hideAndNotify(page);await pagehide(page);
       assert.equal(await raw(page),external,"practice cannot overwrite an external save change");
-      await page.locator("#tutorial-return").click();
+      await page.locator("#scene-return").click();
       assert.equal(await raw(page),external,"return detects and preserves the external save change");
       assert.match((await status(page)).text,/changed outside this session/i);
     });
