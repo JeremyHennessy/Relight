@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080f1d">
+<meta name="description" content="Relight: restore an abandoned world. Play the early browser prototype.">
+<title>Relight — Bring the light back</title>
+<link rel="stylesheet" href="./styles.css">
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+</head>
+<body>
+<!-- Ambient color remains in the fixed body background; no off-screen elements that expand mobile width. -->
+<header class="masthead">
+  <a class="brand" href="#top" aria-label="Relight, return to top">
+    <span class="brand-mark" aria-hidden="true">✧</span><span>RELIGHT</span>
+    <span class="brand-divider"></span><span class="brand-caption">PLANETARY RESTORATION</span>
+  </a>
+  <div class="head-actions">
+    <span class="build-badge"><span class="live-dot"></span> WEB PLAYTEST</span>
+    <button class="text-button" id="how-to-play" type="button">How to play <span aria-hidden="true">↗</span></button>
+  </div>
+</header>
+<main class="layout" id="top">
+  <section class="world-section" aria-label="Planet status">
+    <div class="world-intro">
+      <div class="eyebrow"><span class="eyebrow-dot"></span> MISSION CONTROL <span class="thin-sep">/</span> <span id="sector">SECTOR 01</span></div>
+      <h1 id="world-title" tabindex="-1">Every world<br>deserves <em>another dawn.</em></h1>
+      <p class="intro-copy" id="world-copy">The planet has gone quiet. Restore its energy network, power the machines and watch life return—one region at a time.</p>
+      <div class="resource-grid" aria-label="Your current resources">
+        <div class="resource">
+          <span class="resource-label">SALVAGED SCRAP <span class="resource-icon scrap-ico">⬡</span></span>
+          <div class="resource-value"><strong id="scrap">30</strong><span class="unit">SCRAP</span></div>
+          <span class="resource-note" id="mining-rate">+1.0 per second</span>
+        </div>
+        <div class="resource">
+          <span class="resource-label">NETWORK STATUS <span class="resource-icon power-ico">ϟ</span></span>
+          <div class="resource-value"><strong id="power">3 / 3</strong><span class="unit">CONNECTED</span></div>
+          <span class="resource-note" id="power-note">All machines powered</span>
+        </div>
+      </div>
+      <div id="save-status" class="save-status" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+    </div>
+    <div class="planet-scene" aria-label="Live view of the recovering planet">
+      <div class="orbital orb-one"></div><div class="orbital orb-two"></div>
+      <span class="star star-a"></span><span class="star star-b"></span><span class="star star-c"></span><span class="star star-d"></span><span class="star star-e"></span>
+      <div class="planet-glow"></div>
+      <canvas id="planet" width="520" height="520" role="img" aria-label="Procedural planet changing as recovery progresses"></canvas>
+      <div class="planet-name"><span class="small-cross">✳</span><div><strong id="planet-name">AURORA-9</strong><small id="planet-caption">ATMOSPHERE: DORMANT</small></div></div>
+      <div class="planet-tag" id="planet-tag"><span class="tag-dot"></span> RESTORATION ACTIVE</div>
+    </div>
+    <div class="opening-world" id="opening-world" data-phase="repair" data-powered="false"
+      role="group" aria-label="First Light field scene">
+      <svg id="opening-landscape" class="opening-landscape" viewBox="0 0 960 420" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <linearGradient id="scene-sky" x2="0" y2="1"><stop stop-color="#132d40"/><stop offset="1" stop-color="#244453"/></linearGradient>
+          <linearGradient id="scene-ground" x2="0" y2="1"><stop stop-color="#33424a"/><stop offset="1" stop-color="#182c35"/></linearGradient>
+          <linearGradient id="scene-glass" x2="0" y2="1"><stop stop-color="#294b58"/><stop offset="1" stop-color="#172d3b"/></linearGradient>
+          <radialGradient id="scene-reactor-glow"><stop stop-color="#ffd783" stop-opacity=".8"/><stop offset="1" stop-color="#ffd783" stop-opacity="0"/></radialGradient>
+          <radialGradient id="scene-life-glow"><stop stop-color="#83f2ca" stop-opacity=".78"/><stop offset="1" stop-color="#83f2ca" stop-opacity="0"/></radialGradient>
+        </defs>
+        <rect width="960" height="420" fill="url(#scene-sky)"/>
+        <circle cx="785" cy="74" r="25" fill="#d1e6dd" opacity=".32"/>
+        <circle cx="785" cy="74" r="36" fill="#d1e6dd" opacity=".06"/>
+        <g fill="#d1edf0" opacity=".64"><circle cx="112" cy="72" r="2"/><circle cx="338" cy="46" r="1.6"/><circle cx="557" cy="84" r="1.5"/><circle cx="884" cy="139" r="2"/></g>
+        <path d="M0 252 Q110 198 224 236 T448 225 T688 230 T960 205 V420 H0Z" fill="#253d49"/>
+        <path d="M0 300 Q157 255 312 290 T622 284 T960 266 V420 H0Z" fill="url(#scene-ground)"/>
+        <path d="M0 346 Q200 317 391 345 T744 330 T960 341 V420 H0Z" fill="#172d35" opacity=".88"/>
+        <g fill="#a9c5c4" opacity=".66" font-family="Space Grotesk, sans-serif" font-size="13" font-weight="700" letter-spacing="2">
+          <text x="116" y="204">REACTOR</text><text x="694" y="195">GREENHOUSE</text>
+        </g>
+        <path class="scene-cable-base" d="M218 272 C282 256 322 285 377 270 M464 270 C520 253 572 280 648 267"/>
+        <path class="scene-cable-dead" d="M218 272 C282 256 322 285 377 270 M464 270 C520 253 572 280 648 267"/>
+        <path class="scene-cable-live" d="M218 272 C282 256 322 285 377 270 L464 270 C520 253 572 280 648 267"/>
+        <path class="scene-flow" pathLength="1" d="M218 272 C282 256 322 285 377 270 L464 270 C520 253 572 280 648 267"/>
+        <g id="scene-network-wires" aria-hidden="true"></g>
+        <path id="scene-network-preview" class="scene-network-preview" d="M422 270 Q620 225 828 242" opacity="0" aria-hidden="true"/>
+        <g id="scene-reactor">
+          <circle class="scene-reactor-aura" cx="193" cy="268" r="83" fill="url(#scene-reactor-glow)"/>
+          <path d="M125 307 L137 226 Q193 189 249 226 L261 307Z" fill="#314a54" stroke="#819c96" stroke-width="3"/>
+          <path d="M147 299 L155 238 L193 216 L231 238 L239 299Z" fill="#182e39" stroke="#c5a768" stroke-width="3"/>
+          <path d="M176 282 L181 250 L193 239 L205 250 L210 282Z" fill="#efc873" stroke="#fff0bd" stroke-width="3"/>
+          <path d="M108 309H278V329H108Z" fill="#1c313a" stroke="#708b89" stroke-width="3"/>
+          <path d="M144 222L154 203M242 222L232 203" stroke="#96aaa0" stroke-width="5" stroke-linecap="round"/>
+          <text x="193" y="354" text-anchor="middle" fill="#e7d39c" font-size="12" font-weight="800" letter-spacing="2">CORE</text>
+        </g>
+        <g id="scene-relay">
+          <path d="M390 255L407 242H437L454 255V285L437 298H407L390 285Z" fill="#243c4c" stroke="#77abd0" stroke-width="4"/>
+          <path d="M412 260L404 272L419 271L411 284M431 258L424 270L438 269L430 284" fill="none" stroke="#ffc783" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path class="scene-spark" d="M378 247L386 238M461 295L470 303M382 296L374 303" stroke="#ffca85" stroke-width="3" stroke-linecap="round"/>
+        </g>
+        <g id="scene-greenhouse">
+          <path d="M644 304V235Q700 163 756 235V304Z" fill="url(#scene-glass)" stroke="#8aa9a1" stroke-width="4"/>
+          <path d="M644 266H756M672 204V304M728 204V304M644 304H756" fill="none" stroke="#718e89" stroke-width="3"/>
+          <path class="scene-window" d="M650 268H670V298H650ZM678 268H696V298H678ZM704 268H724V298H704ZM732 268H750V298H732Z" fill="#162a36"/>
+          <circle class="scene-life-light" cx="700" cy="262" r="72" fill="url(#scene-life-glow)"/>
+          <path d="M686 297Q682 279 690 273M700 299Q700 278 700 268M713 298Q718 280 711 274" fill="none" stroke="#698b71" stroke-width="4" stroke-linecap="round"/>
+          <text x="700" y="354" text-anchor="middle" fill="#b5cbc0" font-size="12" font-weight="800" letter-spacing="2">LIFE ENGINE</text>
+        </g>
+        <g id="scene-sprouts" opacity="0">
+          <path d="M605 319Q601 296 590 291M605 319Q610 298 622 294M568 324Q567 309 558 304M778 319Q775 297 765 292M778 319Q785 302 797 299" fill="none" stroke="#a8e49e" stroke-width="5" stroke-linecap="round"/>
+          <ellipse cx="591" cy="291" rx="12" ry="5" transform="rotate(28 591 291)" fill="#9be0a0"/>
+          <ellipse cx="622" cy="294" rx="12" ry="5" transform="rotate(-28 622 294)" fill="#8dcf91"/>
+          <ellipse cx="558" cy="304" rx="10" ry="4" transform="rotate(30 558 304)" fill="#9be0a0"/>
+          <ellipse cx="765" cy="292" rx="11" ry="5" transform="rotate(28 765 292)" fill="#9be0a0"/>
+          <ellipse cx="797" cy="299" rx="11" ry="5" transform="rotate(-25 797 299)" fill="#8dcf91"/>
+        </g>
+        <g id="scene-frontier" opacity="0">
+          <path d="M837 287L854 256L871 287Z" fill="#6b867b" stroke="#9db8a2" stroke-width="3"/>
+          <path d="M824 312H885" stroke="#d4ba7e" stroke-width="4" stroke-dasharray="6 7"/>
+          <text x="854" y="336" text-anchor="middle" fill="#d8c590" font-size="10" font-weight="800" letter-spacing="1">SALVAGE RIDGE</text>
+        </g>
+        <g id="scene-frontier-sprouts" opacity="0">
+          <path d="M828 309Q826 291 818 287M828 309Q834 292 844 288M881 309Q880 296 873 292" fill="none" stroke="#a8e49e" stroke-width="4" stroke-linecap="round"/>
+          <ellipse cx="818" cy="287" rx="9" ry="4" transform="rotate(28 818 287)" fill="#9be0a0"/>
+          <ellipse cx="844" cy="288" rx="9" ry="4" transform="rotate(-28 844 288)" fill="#8dcf91"/>
+          <ellipse cx="873" cy="292" rx="8" ry="4" transform="rotate(28 873 292)" fill="#9be0a0"/>
+        </g>
+        <g id="scene-mine-17" class="scene-machine" opacity="0">
+          <path d="M720 313H778L772 291H727Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M749 289V265L766 247M750 265L733 248" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="750" cy="263" r="7" fill="#e4c47e"/>
+          <path class="scene-salvage" d="M738 243L735 231M760 241L766 230M750 236V224" stroke="#f5dc9d" stroke-width="2"/>
+        </g>
+        <g id="scene-mine-7" class="scene-machine" opacity="0" transform="translate(220 0)">
+          <path d="M94 301H150L144 280H101Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M122 279V255L139 237M123 255L106 238" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="123" cy="253" r="7" fill="#e4c47e"/>
+        </g>
+        <g id="scene-mine-8" class="scene-machine" opacity="0" transform="translate(365 10)">
+          <path d="M94 301H150L144 280H101Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M122 279V255L139 237M123 255L106 238" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="123" cy="253" r="7" fill="#e4c47e"/>
+        </g>
+        <g id="scene-mine-10" class="scene-machine" opacity="0" transform="translate(760 10)">
+          <path d="M94 301H150L144 280H101Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M122 279V255L139 237M123 255L106 238" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="123" cy="253" r="7" fill="#e4c47e"/>
+        </g>
+        <g id="scene-power" class="scene-machine" opacity="0">
+          <path d="M596 312H646L640 287H602Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M623 285L610 302H623L616 318L636 295H624Z" fill="#ffe18c" stroke="#fff4c5" stroke-width="2"/>
+        </g>
+        <g id="scene-ridge-relay" class="scene-machine" opacity="0">
+          <path d="M806 230L817 221H839L850 230V249L839 258H817L806 249Z" fill="#243c4c" stroke="#77abd0" stroke-width="3"/>
+          <path d="M822 231L817 240L828 239L823 249M838 230L832 239L842 238L837 248" fill="none" stroke="#ffc783" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <g id="scene-field-relay" class="scene-machine" opacity="0">
+          <path d="M778 303L788 295H808L818 303V321L808 329H788L778 321Z" fill="#243c4c" stroke="#77abd0" stroke-width="3"/>
+          <path d="M793 304L788 313L799 312L794 322M807 303L802 312L812 311L807 321" fill="none" stroke="#ffc783" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <g id="scene-ridge-mine" class="scene-machine" opacity="0">
+          <path d="M878 317H934L928 297H885Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M906 295V274L923 256M907 274L890 257" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="907" cy="272" r="7" fill="#e4c47e"/>
+        </g>
+        <g id="scene-frontier-life" class="scene-machine" opacity="0">
+          <path d="M828 355V326Q858 292 888 326V355Z" fill="url(#scene-glass)" stroke="#8aa9a1" stroke-width="3"/>
+          <path d="M828 337H888M843 318V355M873 318V355" fill="none" stroke="#718e89" stroke-width="2"/>
+          <path d="M838 339H849V351H838ZM855 339H866V351H855ZM872 339H883V351H872Z" fill="#9fe5ba"/>
+        </g>
+      </svg>
+      <svg id="scene-network-overlay" class="scene-network-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <g id="scene-network-wires-open"></g>
+      </svg>
+      <div class="scene-sockets" role="group" aria-label="Choose where to place the earned MINE kit">
+        <button id="scene-socket-8" class="scene-socket scene-socket-8" type="button" hidden>PLACE MINE</button>
+        <button id="scene-socket-10" class="scene-socket scene-socket-10" type="button" hidden>PLACE MINE</button>
+        <button id="scene-socket-17" class="scene-socket scene-socket-17" type="button" hidden>PLACE MINE</button>
+      </div>
+      <div id="scene-sites" class="scene-sites" role="group" aria-label="Valley construction sites"></div>
+      <button id="scene-action" class="scene-action" type="button" aria-label="Repair the broken relay for 4 scrap">
+        <span class="scene-action-glyph" aria-hidden="true">◇</span><span id="scene-action-label">PATCH</span>
+      </button>
+      <div class="scene-choice" id="scene-choice" role="group" aria-label="Choose the first expansion investment" hidden>
+        <button id="scene-choice-mine" class="scene-choice-button scene-choice-mine" type="button">
+          <strong>⛏ MINE · RIDGE · 12</strong><small id="scene-choice-mine-detail">More scrap, tighter power.</small>
+        </button>
+        <button id="scene-choice-power" class="scene-choice-button scene-choice-power" type="button">
+          <strong>ϟ POWER · GREENHOUSE · 15</strong><small id="scene-choice-power-detail">More LIFE, steady mining.</small>
+        </button>
+      </div>
+      <button id="scene-awaken" class="scene-awaken" type="button" hidden>AWAKEN REGION <span aria-hidden="true">↗</span></button>
+      <button id="scene-return" class="scene-return" type="button" hidden>RETURN TO SAVE</button>
+      <span id="scene-practice-label" class="scene-practice-label" hidden>Temporary practice · nothing transfers</span>
+      <span id="opening-stage-live" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
+    </div>
+    <div id="scene-build-controls" class="scene-build-controls" role="group" aria-label="Build in the valley" hidden>
+      <div class="scene-build-tools" role="group" aria-label="Choose a structure">
+        <button type="button" class="scene-build-tool" data-machine="3" aria-pressed="false">MINE · 12</button>
+        <button type="button" class="scene-build-tool" data-machine="2" aria-pressed="false">RELAY · 4</button>
+        <button type="button" class="scene-build-tool" data-machine="4" aria-pressed="false">LIFE · 18</button>
+        <button type="button" class="scene-build-tool" data-machine="5" aria-pressed="false">POWER · 15</button>
+        <button type="button" class="scene-build-tool" data-machine="0" aria-pressed="false">REMOVE</button>
+        <button type="button" id="scene-more-sites" class="scene-more-sites" hidden>More connected sites</button>
+        <button type="button" id="scene-advanced-toggle" class="scene-advanced-toggle" aria-pressed="false">Advanced network</button>
+      </div>
+      <p id="scene-site-readout" class="scene-site-readout" role="status" aria-live="polite" aria-atomic="true">Choose a structure, then select a site in the valley.</p>
+    </div>
+  </section>
+
+  <section class="mission-banner" aria-label="Current guided objective">
+    <div class="mission-number"><span>FIELD<br>DIRECTIVE</span><strong id="mission-number">01</strong></div>
+    <div class="mission-copy"><div class="eyebrow mission-eyebrow" id="mission-eyebrow">YOUR NEXT MOVE</div><h2 id="mission-title" tabindex="-1" aria-live="polite" aria-atomic="true">Give the life engine a boost.</h2><p id="mission-description">The starter network is live. Select <b>POWER</b> below, then tap the glowing tile beside the green LIFE machine.</p><button id="campaign-action" class="campaign-action" type="button" hidden></button><span id="campaign-wallet" class="campaign-wallet" hidden></span><p id="tutorial-why" class="tutorial-why" hidden></p></div>
+    <div class="mission-progress" id="mission-stages" aria-label="Walkthrough progress"><span></span><span></span><span></span><span></span><span></span></div>
+  </section>
+
+  <section class="workshop" aria-label="Network construction and upgrades">
+    <div class="network-card">
+      <div class="section-heading">
+        <div><div class="eyebrow" id="network-eyebrow">THE GRID <span class="thin-sep">/</span> NETWORK 5×5</div><h2 id="network-board-title">Build the connection.</h2></div>
+        <div class="network-key"><span class="key-on"></span> ACTIVE <span class="key-off"></span> OFFLINE <span class="key-fuel">FUEL</span> STARVED <span class="key-limited">LIMIT</span> FUEL <span class="key-throttle">LOW</span> POWER</div>
+      </div>
+      <div class="mobile-feedback" id="mobile-feedback" role="status" aria-live="polite">POWER selected · tap the glowing NEXT tile</div>
+      <div class="quick-tools" role="group" aria-label="Choose a machine near the construction grid">
+        <button type="button" class="quick-tool" data-machine="5" aria-pressed="true" aria-label="Power generator, 15 scrap"><strong aria-hidden="true">ϟ</strong><span>POWER</span><small>15</small></button>
+        <button type="button" class="quick-tool" data-machine="3" aria-pressed="false" aria-label="Scrap miner, 12 scrap"><strong aria-hidden="true">⬡</strong><span>MINE</span><small>12</small></button>
+        <button type="button" class="quick-tool" data-machine="2" aria-pressed="false" aria-label="Energy relay, 4 scrap"><strong aria-hidden="true">◇</strong><span>RELAY</span><small>4</small></button>
+        <button type="button" class="quick-tool" data-machine="4" aria-pressed="false" aria-label="Life engine, 18 scrap"><strong aria-hidden="true">✳</strong><span>LIFE</span><small>18</small></button>
+        <button type="button" class="quick-tool" data-machine="0" aria-pressed="false" aria-label="Remove a structure"><strong aria-hidden="true">×</strong><span>REMOVE</span><small>FREE</small></button>
+      </div>
+      <p class="machine-readout" id="machine-readout" role="status" aria-live="polite" aria-atomic="true">POWER · select a machine to inspect its network status.</p>
+      <div class="tutorial-controls" id="tutorial-controls" hidden><span id="tutorial-mode-label" hidden></span><button id="tutorial-skip" class="quiet-button tutorial-control" type="button" hidden>Skip walkthrough</button><button id="tutorial-return" class="quiet-button tutorial-control" type="button" hidden>Return to your saved world</button><button id="tutorial-done" class="quiet-button tutorial-control" type="button" hidden>Continue playing</button></div>
+      <div class="board-recovery" role="group" aria-label="Region recovery status">
+        <div class="progress-block">
+          <div class="progress-heading"><span>BIOSPHERE RECOVERY</span><strong id="restored-percent">0%</strong></div>
+          <div class="track" role="progressbar" id="recovery-progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Region recovery"><span id="recovery-fill"></span></div>
+          <div class="progress-foot"><span id="recovery-rate">Restoring +0.7 / sec</span><span id="region-state" tabindex="-1">Restoration in progress</span></div>
+        </div>
+        <button id="revive" class="revive-button" hidden disabled type="button" aria-describedby="revive-hint"><span class="button-star" aria-hidden="true">✦</span><span id="revive-label">AWAKEN REGION</span><span aria-hidden="true" class="revive-arrow">↗</span></button>
+        <div class="revive-hint" id="revive-hint" hidden>The region is ready. Awaken it for free and uncover more of the planet.</div>
+      </div>
+      <section id="progress-recap" class="progress-recap" aria-label="Progress recap" hidden>
+        <div class="recap-copy"><h3 id="recap-title" aria-live="polite"></h3><div id="recap-details"></div>
+          <p id="recap-caps" class="recap-caps" hidden>Offline progress is capped at 8 hours; scrap mining is capped at 30 minutes.</p>
+        </div>
+        <button id="dismiss-recap" class="recap-dismiss" type="button" aria-label="Dismiss progress recap">×</button>
+      </section>
+      <div class="board-wrap"><div class="network-board" id="network-board">
+        <svg class="network-lines" id="network-lines" viewBox="0 0 500 500" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div id="tiles" class="tiles" role="group" aria-label="Place machines on the 5 by 5 energy grid"></div>
+      </div></div>
+      <div class="board-foot"><div><span class="pulse-key">●</span> <span id="selected-tool-text">POWER selected</span></div><button class="link-button" id="repair" type="button">Reset grid ↺</button></div>
+    </div>
+    <div class="sidebar">
+      <div class="tools-card">
+        <div class="section-heading"><div><div class="eyebrow">02 / CONSTRUCTION</div><h2>Choose your machine.</h2></div></div>
+        <p class="tools-caption">Pick a tool, then tap an empty square on the grid. Every choice changes the network.</p>
+        <div class="tool-list" id="tool-list">
+          <button class="tool" data-machine="5" type="button" aria-pressed="true"><span class="tool-icon tool-generator">ϟ</span><span class="tool-copy"><strong>Power generator</strong><small>More energy. Boosts nearby life engines.</small></span><span class="tool-cost">15 <i>⌬</i></span></button>
+          <button class="tool" data-machine="3" type="button" aria-pressed="false"><span class="tool-icon tool-extractor">⛏</span><span class="tool-copy"><strong>Scrap miner</strong><small>Collects the material for new builds.</small></span><span class="tool-cost">12 <i>⌬</i></span></button>
+          <button class="tool" data-machine="2" type="button" aria-pressed="false"><span class="tool-icon tool-relay">◇</span><span class="tool-copy"><strong>Energy relay</strong><small>Extends the grid. Boosts nearby miners.</small></span><span class="tool-cost">4 <i>⌬</i></span></button>
+          <button class="tool" data-machine="4" type="button" aria-pressed="false"><span class="tool-icon tool-restorer">✳</span><span class="tool-copy"><strong>Life engine</strong><small>Turns salvaged scrap into thriving land.</small></span><span class="tool-cost">18 <i>⌬</i></span></button>
+          <button class="tool" data-machine="0" type="button" aria-pressed="false"><span class="tool-icon tool-remove">×</span><span class="tool-copy"><strong>Remove</strong><small>Clear a structure. No refund.</small></span><span class="tool-cost free-cost">FREE</span></button>
+        </div>
+      </div>
+      <div class="upgrades-card">
+        <div class="section-heading"><div><div class="eyebrow">03 / OPTIMIZATION</div><h2>Strengthen the system.</h2></div></div>
+        <div class="upgrade-grid">
+          <button id="upgrade-mining" class="upgrade-button" type="button"><span class="upgrade-icon">↗</span><strong>Mining efficiency</strong><small id="mining-level">Level 0</small><span class="upgrade-price" id="mining-price">20 SCRAP <span>＋</span></span></button>
+          <button id="upgrade-power" class="upgrade-button" type="button"><span class="upgrade-icon">ϟ</span><strong>Power capacity</strong><small id="power-level">Level 0</small><span class="upgrade-price" id="power-price">20 SCRAP <span>＋</span></span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</main>
+<footer><span>RELIGHT <span class="foot-em">/</span> EARLY WEB PLAYTEST</span><span>Original prototype · No ads · Saves in this browser · Not the Unity release</span></footer>
+<dialog id="welcome" class="intro-dialog" aria-labelledby="welcome-title">
+  <div class="dialog-content">
+    <div class="dialog-mark">✦</div><div class="eyebrow">WELCOME TO RELIGHT</div>
+    <h2 id="welcome-title">One spark can bring a world back.</h2>
+    <p id="welcome-copy">You inherit a damaged energy network. Your job is simple: <b>connect machines</b>, mine scrap, keep LIFE fueled and bring the planet back to life.</p>
+    <div class="guide-steps">
+      <div><span>01</span><strong>Connect POWER</strong><small>Capacity and adjacency help LIFE work.</small></div>
+      <div><span>02</span><strong>Grow scrap and relay reach</strong><small>MINE funds growth; RELAY extends energy.</small></div>
+      <div><span>03</span><strong>Fuel LIFE, then awaken</strong><small>Build a second LIFE and claim only when ready.</small></div>
+    </div>
+    <button class="start-button" id="begin" type="button"><span id="begin-label">START GUIDED WALKTHROUGH</span><span aria-hidden="true">↗</span></button>
+    <button id="dismiss-help" class="quiet-button" type="button">Explore without walkthrough</button>
+  </div>
+</dialog>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>
