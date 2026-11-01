@@ -1,7 +1,8 @@
-import {Machine,PRICE,TARGET,fresh,loaded,valid,connected,rates,place,upgrade,upgradeCost,isReady,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
+import {Machine,PRICE,TARGET,fresh,loaded,valid,connected,rates,place,upgrade,upgradeCost,isReady,estimateRecoverySeconds,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
 
 const SAVE="relight.webplaytest.v1";
 const FIRST="relight.webplaytest.onboarded.v1";
+const MAX_DISPLAYED_ETA_SECONDS=365*24*60*60;
 const glyph={0:"+",1:"✦",2:"◇",3:"⬡",4:"✳",5:"ϟ"};
 const words={0:"REMOVE",1:"CORE",2:"RELAY",3:"MINE",4:"LIFE",5:"POWER"};
 const kinds={0:"empty",1:"core",2:"relay",3:"extractor",4:"restorer",5:"generator"};
@@ -99,6 +100,14 @@ function persist(){
   markStorageAvailable();
 }
 const readable=n=>n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"K":Number(n).toFixed(0);
+function readableEta(seconds){
+  let total=Math.ceil(seconds);
+  if(total<60)return total+"s";
+  const minutes=Math.floor(total/60),remainingSeconds=total%60;
+  if(minutes<60)return minutes+"m"+(remainingSeconds?" "+remainingSeconds+"s":"");
+  const hours=Math.floor(minutes/60),remainingMinutes=minutes%60;
+  return hours+"h"+(remainingMinutes?" "+remainingMinutes+"m":"");
+}
 function mobileFeedback(message,warning=false){
   const inline=$("mobile-feedback");
   if(!inline)return;
@@ -214,8 +223,19 @@ function render(force=false){
   $("restored-percent").textContent=Math.floor(percentage)+"%";
   $("recovery-fill").style.width=percentage+"%";
   $("recovery-progress").setAttribute("aria-valuenow",String(Math.floor(percentage)));
-  $("recovery-rate").textContent="Restoring +"+r.restored.toFixed(2)+" / second";
-  $("region-state").textContent=ready?"REGION READY":r.restored>0?"Restoration in progress":"Connect a life engine";
+  $("recovery-rate").textContent="Restore +"+r.restored.toFixed(2)+"/s";
+  const eta=estimateRecoverySeconds(state);
+  const target=TARGET(state.region);
+  const hasLife=state.cells.includes(Machine.Restorer);
+  const hasMine=state.cells.includes(Machine.Extractor);
+  const hasConnectedMine=state.cells.some((type,index)=>type===Machine.Extractor&&r.connected[index]);
+  $("region-state").textContent=ready?"Ready · tap AWAKEN REGION":eta===null?
+    (hasLife?"Reconnect a LIFE engine":"Build a LIFE engine"):
+    !Number.isFinite(target)||Number.isNaN(eta)?"Active time estimate unavailable":
+    eta===Infinity&&r.mined>0?"Active time estimate unavailable":
+    eta===Infinity?(hasMine&&!hasConnectedMine?"Reconnect a MINE to fuel recovery":"Connect a MINE to fuel recovery"):
+    eta>MAX_DISPLAYED_ETA_SECONDS?">1y active to awaken":
+    "~"+readableEta(eta)+" active to awaken";
   $("revive").disabled=!ready;
   $("revive-label").textContent=ready?"AWAKEN REGION "+String(state.region+1).padStart(2,"0"):"AWAKEN REGION";
   $("revive-hint").textContent=ready?"The region is ready. Awaken it for free and uncover more of the planet.":"Fill the recovery meter to awaken the next region.";

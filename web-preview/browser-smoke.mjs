@@ -22,6 +22,8 @@ try{
   await p.goto(origin,{waitUntil:"networkidle"});
   assert.equal(await p.locator(".tile").count(),25,"5x5 grid rendered");
   assert.equal(await p.locator("#welcome").evaluate(e=>e.open),true,"first-launch tutorial appears");
+  assert.match(await p.locator("#region-state").textContent(),/active to awaken/,
+    "a new player sees an estimated active-play time to the first region");
   await p.screenshot({path:"relight-mobile-onboarding.png",fullPage:true,animations:"disabled"});
   const geometry=await p.evaluate(()=>{
     const b=document.querySelector("#begin").getBoundingClientRect();
@@ -60,6 +62,8 @@ try{
   await p.waitForFunction(()=>document.querySelector("#mission-title")?.textContent.includes("scrap miner"));
   assert.match(await p.locator("#mission-description").textContent(),/MINE is already selected for you/,
     "guided mission instructions reflect the actual automatically selected tool");
+  assert.match(await p.locator("#region-state").textContent(),/active to awaken/,
+    "the first-play build loop keeps its active-play estimate visible");
   assert.equal(await p.locator("#toast").isVisible(),false,
     "floating toast is disabled on mobile");
   assert.equal(await p.locator("#mobile-feedback").isVisible(),true,
@@ -136,6 +140,8 @@ try{
   await p.reload({waitUntil:"networkidle"});
   assert.match(await p.locator("#sector").textContent(),/SECTOR 02/,
     "region advancement is preserved across reload");
+  assert.match(await p.locator("#region-state").textContent(),/active to awaken/,
+    "the next region starts with a new active-play estimate after reload");
   await mobile.close();
 
   // Smaller Android handsets must still expose five usable one-thumb build

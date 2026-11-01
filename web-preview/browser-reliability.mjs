@@ -3,7 +3,7 @@
 // reconstructed or claimed to be identical.
 import assert from "node:assert/strict";
 import {chromium} from "playwright";
-import {fresh,Machine} from "./model.mjs";
+import {fresh,Machine,MINING_OFFLINE,advance,estimateRecoverySeconds} from "./model.mjs";
 
 const origin=process.env.RELIGHT_BROWSER_URL||"http://127.0.0.1:8765";
 const saveKey="relight.webplaytest.v1";
@@ -12,12 +12,21 @@ const executablePath=process.env.RELIGHT_CHROMIUM_EXECUTABLE_PATH||undefined;
 const browser=await chromium.launch({headless:true,args:["--no-sandbox"],executablePath});
 let passed=0;
 
-function savedWorld({scrap=50,cells,restoration=0,region=0}={}){
+function savedWorld({scrap=50,cells,restoration=0,region=0,savedAt=Math.floor(Date.now()/1000)}={}){
   const state=fresh();
   if(cells)state.cells=cells.slice();
   state.scrap=scrap;state.restoration=restoration;state.region=region;
-  state.savedAt=Math.floor(Date.now()/1000);state.totalPlayed=0;
+  state.savedAt=savedAt;state.totalPlayed=0;
   return JSON.stringify(state);
+}
+
+function readableEta(seconds){
+  const total=Math.ceil(seconds);
+  if(total<60)return total+"s";
+  const minutes=Math.floor(total/60),remainingSeconds=total%60;
+  if(minutes<60)return minutes+"m"+(remainingSeconds?" "+remainingSeconds+"s":"");
+  const hours=Math.floor(minutes/60),remainingMinutes=minutes%60;
+  return hours+"h"+(remainingMinutes?" "+remainingMinutes+"m":"");
 }
 
 async function withPage({width=390,height=844,initial={},config={}},run){
@@ -355,6 +364,94 @@ try{
       const network=await page.locator("#power-note").textContent();
       assert.match(network,/1 machine is disconnected/i);
       assert.match(network,/Power shortage: 3 connected consumers for usable capacity 2; output 67%/i);
+    });
+  });
+
+  await check("zero mining distinguishes an exhausted fuel supply from enough stored scrap",async()=>{
+    const cells=fresh().cells;cells[11]=Machine.Empty;
+    for(const [scrap,expected] of [[0,/Connect a MINE to fuel recovery/],[99,/Connect a MINE to fuel recovery/],[100,/active to awaken/]])
+      await withPage({initial:{[saveKey]:savedWorld({cells,scrap}),[firstKey]:"yes"}},async page=>{
+        assert.match(await page.locator("#region-state").textContent(),expected);
+      });
+  });
+
+  await check("power-throttled ETA matches the network's sustainable fuel bottleneck",()=>{
+    const cells=fresh().cells;
+    cells[7]=Machine.Restorer;cells[17]=Machine.Extractor;cells[8]=Machine.Restorer;
+    const world=savedWorld({cells,scrap:0});
+    return withPage({initial:{[saveKey]:world,[firstKey]:"yes"}},async page=>{
+      const state=JSON.parse(await raw(page));
+      const eta=estimateRecoverySeconds(state);
+      assert.ok(Number.isFinite(eta));
+      assert.match(await page.locator("#power-note").textContent(),/Power shortage:/);
+      assert.equal(await page.locator("#region-state").textContent(),"~"+readableEta(eta)+" active to awaken");
+    });
+  });
+
+  await check("unbounded region targets show an honest bounded or unavailable estimate",async()=>{
+    const overflowingCells=fresh().cells;overflowingCells[7]=Machine.Restorer;
+    for(const [region,cells,expected] of [
+      [1e306,undefined,/>1y active to awaken/],
+      [3e306,overflowingCells,/Active time estimate unavailable/],
+      [Number.MAX_VALUE,undefined,/Active time estimate unavailable/]
+    ])
+      await withPage({width:320,initial:{[saveKey]:savedWorld({region,cells}),[firstKey]:"yes"}},async page=>{
+        assert.match(await page.locator("#region-state").textContent(),expected);
+        assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),
+          "extreme ETA copy stays within the narrow mobile viewport");
+      });
+  });
+
+  await check("interrupted recovery resumes its ETA on a later region",()=>{
+    const cells=fresh().cells;
+    cells[9]=Machine.Generator;
+    const interrupted=savedWorld({cells,scrap:25,restoration:100,region:2,
+      savedAt:Math.floor(Date.now()/1000)-60});
+    return withPage({initial:{[saveKey]:interrupted,[firstKey]:"yes"}},async page=>{
+      assert.match(await page.locator("#sector").textContent(),/SECTOR 03/);
+      assert.match(await page.locator("#region-state").textContent(),/to awaken/);
+      const savedBefore=JSON.parse(await raw(page));
+      assert.equal(savedBefore.region,2);
+      assert.ok(savedBefore.restoration>100,
+        "one minute of capped offline recovery advances the interrupted run before ETA display");
+      await page.reload({waitUntil:"networkidle"});
+      assert.match(await page.locator("#sector").textContent(),/SECTOR 03/);
+      assert.match(await page.locator("#region-state").textContent(),/to awaken/,
+        "the next-region estimate is available again after reloading");
+      const savedAfter=JSON.parse(await raw(page));
+      assert.equal(savedAfter.region,2,"reload does not repeat the completed region claim");
+      assert.ok(savedAfter.restoration>=savedBefore.restoration,
+        "offline progress resumes without losing the saved recovery meter");
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),
+        "the ETA stays within the narrow mobile layout");
+    });
+  });
+
+  await check("offline return beyond the mining cap displays ETA from the resumed saved state",()=>{
+    const cells=fresh().cells;
+    cells[7]=Machine.Restorer;cells[17]=Machine.Extractor;cells[8]=Machine.Restorer;
+    const initial=savedWorld({cells,scrap:0,restoration:100,region:100,
+      savedAt:Math.floor(Date.now()/1000)-(MINING_OFFLINE+60)});
+    return withPage({initial:{[saveKey]:initial,[firstKey]:"yes"}},async page=>{
+      await pagehide(page);
+      const resumed=JSON.parse(await raw(page));
+      assert.ok(resumed.totalPlayed>MINING_OFFLINE,"offline elapsed time exceeded the mining cap");
+      assert.ok(resumed.scrap<1,"offline mining stopped at the 30-minute cap");
+
+      const expected=JSON.parse(initial);
+      advance(expected,resumed.totalPlayed,MINING_OFFLINE);
+      assert.equal(resumed.scrap,expected.scrap,"the saved resource balance reflects capped mining");
+      assert.equal(resumed.restoration,expected.restoration,"the saved progress reflects actual offline recovery");
+      const eta=estimateRecoverySeconds(resumed);
+      assert.equal(await page.locator("#region-state").textContent(),"~"+readableEta(eta)+" active to awaken",
+        "the displayed estimate is recalculated from the resumed save, not pre-offline state");
+
+      await page.reload({waitUntil:"networkidle"});
+      await pagehide(page);
+      const resumedAgain=JSON.parse(await raw(page));
+      assert.equal(await page.locator("#region-state").textContent(),
+        "~"+readableEta(estimateRecoverySeconds(resumedAgain))+" active to awaken",
+        "a second reload recalculates from the latest persisted state");
     });
   });
 

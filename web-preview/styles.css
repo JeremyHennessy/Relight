@@ -55,3 +55,5 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
   .quick-tool:active{transform:scale(.97)}
   .board-wrap{padding-top:10px}
 }
+
+.progress-foot #region-state{max-width:60%;color:#b9d9d0;font-weight:700;text-align:right}

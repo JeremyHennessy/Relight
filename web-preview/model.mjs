@@ -78,6 +78,27 @@ export function upgradeCost(s,mining){
   return Math.floor(20*Math.pow(1.8,Math.min(mining?s.extractorLevel:s.powerLevel,40)));
 }
 export const isReady=s=>s.restoration>=TARGET(s.region);
+// Estimate active-play time using today's connected network. Stored scrap
+// provides a full-rate window before progress slows to the sustainable mining
+// rate. A null result means no LIFE is connected. Infinity can mean the current
+// stock cannot finish without mining, or arithmetic overflow for extreme saves;
+// callers should distinguish those cases using the current production rates.
+export function estimateRecoverySeconds(s){
+  const remaining=Math.max(0,TARGET(s.region)-s.restoration);
+  if(remaining===0)return 0;
+  const r=rates(s);
+  if(r.restored<=0)return null;
+  const fullRateSeconds=remaining/r.restored;
+  if(r.used<=0||r.mined>=r.used)return fullRateSeconds;
+
+  const deficit=r.used-r.mined;
+  const fullRateRunway=s.scrap/deficit;
+  if(fullRateRunway>=fullRateSeconds)return fullRateSeconds;
+  const remainingAfterReserve=Math.max(0,remaining-fullRateRunway*r.restored);
+  const sustainableRate=r.mined>0?r.restored*r.mined/r.used:0;
+  if(sustainableRate<=0)return Infinity;
+  return fullRateRunway+remainingAfterReserve/sustainableRate;
+}
 export function claim(s){
   if(!isReady(s))return {ok:false,message:"Restore the region before awakening it."};
   s.restoration=0;s.region++;s.scrap+=40+s.region*10;
