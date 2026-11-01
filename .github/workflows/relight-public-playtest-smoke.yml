@@ -12,9 +12,10 @@ permissions:
 
 jobs:
   live-website:
-    # A source push is not proof that Cloudflare has deployed it. Run this
-    # against the public site only after an explicit hosted deployment check.
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    # This branch push is a workflow-only verification change made after the
+    # exact production assets were deployed. This job verifies public assets
+    # and browser behavior; it has no deployment step or write permissions.
+    if: ${{ github.ref == 'refs/heads/feat/relight-first-play-ux-v2' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     name: Verify published game is available and genuinely playable
     runs-on: ubuntu-latest
     timeout-minutes: 15
