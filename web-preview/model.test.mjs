@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import {Machine,PRICE,TARGET,MAX_OFFLINE,fresh,freshCampaign,isCampaign,repairGreenhouse,redeemMineKit,loaded,valid,connected,rates,place,upgrade,upgradeCost,isReady,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
+import {Machine,PRICE,TARGET,MAX_OFFLINE,fresh,freshCampaign,freshVersionTwoCampaign,isCampaign,repairGreenhouse,redeemMineKit,loaded,valid,connected,rates,place,upgrade,upgradeCost,isReady,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
 
 test("world shape, persistent save validation and invalid recovery",()=>{
   const s=fresh();assert.equal(s.cells.length,25);assert.equal(s.cells[12],1);
@@ -117,72 +117,162 @@ test("all UI assets are self-contained and safe static deploy files",()=>{
  assert.ok(!html.includes("http://"));
 });
 
-test("new opening earns an idle-safe MINE kit and gates actions through the first POWER need",()=>{
+function v3AtChoice(startMine=8){
+ const s=freshCampaign();let elapsed=0;
+ assert.equal(repairGreenhouse(s).ok,true);elapsed+=5/.7;
+ advance(s,5/.7);assert.equal(s.campaign.phase,"mine-kit");
+ assert.equal(place(s,startMine,Machine.Extractor).ok,true);assert.equal(s.campaign.phase,"ridge-link");
+ while(s.scrap<PRICE[Machine.Relay]){advance(s,1);elapsed++;assert.equal(valid(s),true);assert.ok(elapsed<200,"ridge relay remains affordable through ordinary production");}
+ assert.equal(place(s,18,Machine.Relay).ok,true);assert.equal(s.campaign.ridgeRelay,true);assert.equal(s.campaign.phase,"first-region");
+ while(s.campaign.phase!=="investment-choice"){advance(s,1);elapsed++;assert.equal(valid(s),true);assert.ok(elapsed<200,"first route choice arrives during active restoration");}
+ assert.ok(s.restoration>=25);assert.ok(s.scrap>=15);assert.ok(elapsed<100,"connection and route choice arrive well before first-region completion");
+ return s;
+}
+function v3Continue(s,route){
+ const mineForecast=structuredClone(s);mineForecast.cells[23]=Machine.Extractor;
+ const powerForecast=structuredClone(s);powerForecast.cells[9]=Machine.Generator;
+ const current=rates(s),mine=rates(mineForecast),power=rates(powerForecast);
+ assert.equal(current.mined,1.25);assert.equal(current.restored,.7);
+ assert.equal(mine.mined,1.6666666666666665);assert.equal(mine.restored,.4666666666666666);
+ assert.equal(power.mined,1.25);assert.equal(power.restored,.84);
+ const index=route==="mine"?23:9,machine=route==="mine"?Machine.Extractor:Machine.Generator;
+ assert.equal(place(s,index,machine).ok,true);assert.equal(s.campaign.firstInvestment,route);
+ assert.equal(s.campaign.phase,"first-region");assert.equal(valid(JSON.parse(JSON.stringify(s))),true,"investment stage round-trips before the next milestone");
+ assert.equal(place(s,19,Machine.Relay).ok,false,"field relay stays locked until restoration reaches its threshold");
+ while(s.campaign.phase!=="field-link"){advance(s,1);assert.equal(valid(s),true);}
+ assert.ok(s.restoration>=50);assert.ok(s.scrap>=PRICE[Machine.Relay]);
+ assert.equal(place(s,19,Machine.Relay).ok,true);assert.equal(s.campaign.fieldRelay,true);assert.equal(s.campaign.phase,"first-region");
+ assert.equal(valid(JSON.parse(JSON.stringify(s))),true,"field connection survives reload");
+ assert.equal(claim(s).ok,false,"the region cannot be claimed before the real restoration goal");
+ while(!isReady(s)){advance(s,1);assert.equal(valid(s),true);}
+ assert.equal(claim(s).ok,true);assert.equal(s.region,1);assert.equal(s.campaign.phase,"frontier-life");
+ assert.equal(valid(JSON.parse(JSON.stringify(s))),true,"new frontier is saveable before its action");
+ assert.equal(place(s,0,Machine.Relay).ok,false,"the new site does not unlock arbitrary construction");
+ assert.equal(place(s,24,Machine.Restorer).ok,true);assert.equal(s.campaign.phase,"open");
+ assert.equal(valid(JSON.parse(JSON.stringify(s))),true,"full network opens only after the frontier LIFE starts");
+ assert.equal(upgrade(s,true).ok,true,"advanced construction is now available");
+ s.restoration=TARGET(s.region);assert.equal(claim(s).ok,true);assert.equal(s.region,2);assert.equal(s.campaign.phase,"open");
+ return s;
+}
+
+test("v3 teaches repair, a movable earned kit and a real ridge connection before route choice",()=>{
  const s=freshCampaign();
- assert.equal(isCampaign(s),true);assert.equal(valid(s),true);
- assert.deepEqual(s.cells.filter((v,i)=>v!==0&&i!==12),[Machine.Restorer]);
- assert.equal(s.cells[13],Machine.Empty);assert.equal(s.scrap,10);
- assert.equal(place(s,13,Machine.Relay).ok,false,"the broken connection requires its dedicated repair action");
- assert.equal(place(s,17,Machine.Extractor).ok,false,"hidden MINE action cannot bypass the kit unlock");
- assert.equal(place(s,9,Machine.Generator).ok,false,"hidden POWER action cannot bypass progression");
- assert.equal(upgrade(s,true).ok,false);assert.equal(claim(s).ok,false);assert.equal(resetGrid(s).ok,false);
+ assert.equal(valid(s),true);assert.equal(s.campaign.version,3);assert.equal(s.campaign.phase,"repair");
+ assert.deepEqual(s.cells.map((v,i)=>v&&i!==12?i:null).filter(v=>v!==null),[14]);
+ assert.equal(place(s,13,Machine.Relay).ok,false);assert.equal(place(s,17,Machine.Extractor).ok,false);
+ assert.equal(place(s,9,Machine.Generator).ok,false);assert.equal(upgrade(s,true).ok,false);
+ assert.equal(claim(s).ok,false);assert.equal(resetGrid(s).ok,false);
  assert.equal(repairGreenhouse(s).ok,true);assert.equal(s.scrap,6);assert.equal(s.campaign.phase,"restore");
- assert.equal(repairGreenhouse(s).ok,false);
- const longIdle=structuredClone(s);advance(longIdle,MAX_OFFLINE,0);
- assert.equal(longIdle.campaign.phase,"mine-kit");assert.equal(longIdle.campaign.mineKit,"earned");
- assert.ok(longIdle.restoration>=5);assert.equal(longIdle.scrap,0,"idle time can exhaust ordinary scrap without losing the kit");
- assert.equal(place(longIdle,17,Machine.Extractor).ok,false,"the earned kit is redeemed only through its one-time action");
- assert.equal(redeemMineKit(longIdle,12).ok,false,"wrong target does not consume the kit");
- longIdle.cells[17]=Machine.Relay;
- assert.equal(redeemMineKit(longIdle,17).ok,false,"occupied target does not consume the kit");
- longIdle.cells[17]=Machine.Empty;
- assert.equal(redeemMineKit(longIdle,17).ok,true);assert.equal(longIdle.campaign.mineKit,"redeemed");
- assert.equal(longIdle.cells[17],Machine.Extractor);assert.equal(longIdle.scrap,0,"kit placement does not spend scrap");
- assert.equal(redeemMineKit(longIdle,17).ok,false,"kit is single use");
- advance(longIdle,160);assert.equal(isReady(longIdle),true,"one mine can sustain the first region after idle depletion");
- assert.equal(claim(longIdle).ok,true);assert.equal(longIdle.region,1);assert.equal(longIdle.campaign.phase,"investment-choice");
- const reward=longIdle.scrap;assert.equal(claim(longIdle).ok,false);assert.equal(longIdle.scrap,reward,"claim cannot duplicate its reward");
- assert.equal(place(longIdle,8,Machine.Extractor).ok,false,"choice exposes only its two marked world sites");
- assert.equal(place(longIdle,7,Machine.Extractor).ok,true);assert.equal(longIdle.campaign.firstInvestment,"mine");assert.equal(longIdle.campaign.phase,"investment-growth");
- assert.ok(rates(longIdle).fraction<1,"MINE-first choice creates a visible real capacity shortage");
- assert.equal(upgrade(longIdle,false).ok,false,"upgrades remain locked until both chosen investment sites are built");
- assert.equal(place(longIdle,9,Machine.Generator).ok,false,"the second site remains locked before 25 real recovery points");
- advance(longIdle,60);assert.equal(longIdle.campaign.phase,"investment-second");assert.ok(longIdle.restoration>=25);
- assert.equal(valid(JSON.parse(JSON.stringify(longIdle))),true,"the opened second site survives a save reload");
- assert.equal(place(longIdle,9,Machine.Generator).ok,true);assert.equal(longIdle.campaign.phase,"open");
- assert.equal(rates(longIdle).fraction,1,"POWER resolves the introduced shortage");
- longIdle.scrap=0;
- assert.equal(place(longIdle,17,Machine.Empty).ok,true,"one MINE can be removed while another remains connected");
- assert.equal(place(longIdle,7,Machine.Empty).ok,false,"the last connected MINE cannot be removed at zero scrap");
- assert.equal(longIdle.cells[7],Machine.Extractor,"the anti-deadlock guard preserves the productive machine");
- longIdle.scrap=40;
- assert.equal(place(longIdle,7,Machine.Empty).ok,false,"having enough cash alone does not permit removing the last campaign MINE");
- assert.equal(longIdle.cells[7],Machine.Extractor);
- assert.equal(place(longIdle,9,Machine.Empty).ok,true,"the completed sandbox can still edit its POWER layout");
- assert.equal(valid(longIdle),true,"an earned unlock remains valid after a player changes the board");
- assert.equal(resetGrid(longIdle).ok,true,"the completed sandbox can reset its board without relocking progression");
- assert.equal(valid(longIdle),true);
+ const rawZero=structuredClone(s);advance(rawZero,MAX_OFFLINE,0);
+ assert.equal(rawZero.campaign.phase,"mine-kit");assert.equal(rawZero.campaign.mineKit,"earned");assert.equal(rawZero.scrap,0);
+ assert.equal(place(rawZero,19,Machine.Extractor).ok,false);assert.equal(rawZero.campaign.mineKit,"earned");
+ assert.equal(place(rawZero,10,Machine.Extractor).ok,true);assert.equal(rawZero.campaign.phase,"mine-disconnected");assert.equal(rates(rawZero).mined,0);
+ assert.equal(place(rawZero,10,Machine.Empty).ok,true);assert.equal(rawZero.campaign.phase,"mine-kit");
+ assert.equal(place(rawZero,8,Machine.Extractor).ok,true);assert.equal(rawZero.campaign.phase,"ridge-link");
+ const before=rawZero.scrap;assert.equal(place(rawZero,17,Machine.Extractor).ok,true,"the connected kit can be safely moved before cabling the ridge");
+ assert.equal(rawZero.cells[8],Machine.Empty);assert.equal(rawZero.cells[17],Machine.Extractor);assert.equal(rawZero.scrap,before);
+ assert.equal(place(rawZero,8,Machine.Extractor).ok,true);assert.equal(rawZero.campaign.starterMineSite,8);assert.equal(valid(rawZero),true);
+ assert.equal(place(rawZero,18,Machine.Relay).ok,false,"the relay cost is enforced before placement");
+ while(rawZero.scrap<4)advance(rawZero,1);
+ assert.equal(place(rawZero,18,Machine.Relay).ok,true);assert.equal(rawZero.campaign.phase,"first-region");
+ assert.equal(rawZero.cells[18],Machine.Relay);assert.equal(connected(rawZero)[18],true);assert.equal(valid(JSON.parse(JSON.stringify(rawZero))),true);
+ assert.equal(place(rawZero,23,Machine.Extractor).ok,false,"route investment is not available before the progress milestone");
+ assert.equal(place(rawZero,19,Machine.Relay).ok,false);assert.equal(place(rawZero,24,Machine.Restorer).ok,false);
+ assert.equal(claim(rawZero).ok,false);
+ while(rawZero.campaign.phase!=="investment-choice")advance(rawZero,1);
+ assert.ok(rawZero.restoration>=25);assert.ok(rawZero.scrap>=15);assert.equal(valid(rawZero),true);
+ assert.equal(claim(rawZero).ok,false);assert.equal(valid(JSON.parse(JSON.stringify(rawZero))),true);
 });
 
-test("campaign saves validate each milestone while legacy and future data stay distinguishable",()=>{
- const opening=freshCampaign();
- assert.equal(valid(opening),true);
- const legacy=fresh();
- assert.equal(Object.hasOwn(legacy,"campaign"),false);
- assert.equal(valid(legacy),true,"valid pre-campaign saves remain fully unlocked legacy worlds");
- assert.equal(place(legacy,0,Machine.Generator).ok,true);
- const unknown=structuredClone(opening);unknown.campaign.version=99;
- assert.equal(valid(unknown),false,"unknown campaign save versions are rejected rather than normalized");
- const invalid=structuredClone(opening);invalid.campaign.phase="future-feature";
- assert.equal(valid(invalid),false);
- repairGreenhouse(opening);advance(opening,10);
- assert.equal(opening.campaign.phase,"mine-kit");assert.equal(valid(opening),true);
- const resumed=JSON.parse(JSON.stringify(opening));assert.equal(valid(resumed),true);
- redeemMineKit(resumed,17);assert.equal(valid(resumed),true);
+test("v3 starter kit moves atomically between live and dark sockets and remains reload-valid",()=>{
+ const s=freshCampaign();repairGreenhouse(s);advance(s,8);assert.equal(s.campaign.phase,"mine-kit");
+ assert.equal(place(s,8,Machine.Extractor).ok,true);assert.equal(s.campaign.phase,"ridge-link");
+ assert.equal(place(s,10,Machine.Extractor).ok,true,"a live kit may be tried at a dark site before the ridge cable");
+ assert.equal(s.cells[8],Machine.Empty);assert.equal(s.cells[10],Machine.Extractor);
+ assert.equal(s.campaign.phase,"mine-disconnected");assert.equal(s.campaign.mineKit,"earned");assert.equal(s.campaign.starterMineSite,null);
+ assert.equal(valid(s),true,"dark move persists as an earned, disconnected kit");
+ assert.equal(valid(JSON.parse(JSON.stringify(s))),true,"dark move survives a save/reload round trip");
+ assert.equal(place(s,10,Machine.Empty).ok,true,"undo makes the same kit available again");
+ assert.equal(s.cells[10],Machine.Empty);assert.equal(s.campaign.phase,"mine-kit");assert.equal(valid(s),true);
+ assert.equal(place(s,8,Machine.Extractor).ok,true);assert.equal(place(s,10,Machine.Extractor).ok,true);
+ assert.equal(place(s,8,Machine.Extractor).ok,true,"the disconnected kit can return to a live site");
+ assert.equal(s.cells[10],Machine.Empty);assert.equal(s.cells[8],Machine.Extractor);
+ assert.equal(s.campaign.phase,"ridge-link");assert.equal(s.campaign.mineKit,"redeemed");assert.equal(s.campaign.starterMineSite,8);
+ assert.equal(valid(JSON.parse(JSON.stringify(s))),true);
+ assert.equal(place(s,10,Machine.Extractor).ok,true);assert.equal(s.campaign.phase,"mine-disconnected");
+ assert.equal(valid(s),true,"repeated live-to-dark moves cannot strand invalid metadata");
+});
+
+test("v3 frontier LIFE phase rejects a dead zero-scrap network without a productive MINE",()=>{
+ const s=v3AtChoice(8);assert.equal(place(s,23,Machine.Extractor).ok,true);
+ while(s.campaign.phase!=="field-link")advance(s,1);
+ assert.equal(place(s,19,Machine.Relay).ok,true);
+ while(!isReady(s))advance(s,1);
+ assert.equal(claim(s).ok,true);assert.equal(s.campaign.phase,"frontier-life");assert.equal(valid(s),true);
+ const dead=structuredClone(s);dead.cells=dead.cells.map((type,index)=>type===Machine.Extractor?Machine.Empty:type);dead.scrap=0;
+ assert.equal(valid(dead),false,"the required LIFE site cannot be the only remaining campaign action with no productive MINE");
+ const disconnected=structuredClone(s);disconnected.cells=disconnected.cells.map(type=>type===Machine.Extractor?Machine.Empty:type);disconnected.cells[0]=Machine.Extractor;
+ assert.equal(valid(disconnected),false,"a decorative disconnected MINE is not enough to validate the locked frontier");
+});
+
+test("v3 open valley protects the last connected MINE when scrap is empty",()=>{
+ const s=v3Continue(v3AtChoice(8),"mine");
+ const before=structuredClone(s);
+ assert.equal(place(before,0,Machine.Extractor).ok,false,"the scene cannot silently create an unconnected structure");
+ assert.equal(before.scrap,s.scrap,"failed contextual placement does not consume scrap");
+ assert.equal(place(before,17,Machine.Extractor).ok,true,"an adjacent connected valley site remains playable");
+ assert.equal(valid(before),true);
+ const mineSites=s.cells.map((type,index)=>type===Machine.Extractor&&rates(s).connected[index]?index:-1).filter(index=>index>=0);
+ assert.ok(mineSites.length>=1);s.scrap=0;
+ for(const index of mineSites.slice(0,-1))assert.equal(place(s,index,Machine.Empty).ok,true);
+ const last=s.cells.findIndex((type,index)=>type===Machine.Extractor&&rates(s).connected[index]);
+ assert.ok(last>=0);assert.equal(place(s,last,Machine.Empty).ok,false);
+ assert.equal(s.cells[last],Machine.Extractor);assert.equal(rates(s).mined>0,true);assert.equal(valid(s),true);
+});
+
+test("v3 route forecasts are numeric, consequential and both routes continue through new frontier",()=>{
+ const mine=v3Continue(v3AtChoice(8),"mine");
+ assert.ok(rates(mine).mined>0);assert.equal(mine.region,2);
+ const power=v3Continue(v3AtChoice(17),"power");
+ assert.ok(rates(power).restored>0);assert.equal(power.region,2);
+});
+
+test("v3 investment choice opens at 25 actual restoration and survives offline threshold crossing",()=>{
+ const s=freshCampaign();repairGreenhouse(s);advance(s,8);place(s,8,Machine.Extractor);
+ while(s.scrap<PRICE[Machine.Relay])advance(s,1);
+ assert.equal(place(s,18,Machine.Relay).ok,true);assert.equal(s.campaign.phase,"first-region");
+ s.restoration=24.9;s.scrap=15;advance(s,.1);
+ assert.equal(s.campaign.phase,"first-region","24.9 points do not unlock the investment choice");
+ s.restoration=25;advance(s,.01);
+ assert.equal(s.campaign.phase,"investment-choice","25 actual points unlock the choice");
+ const waiting=structuredClone(s);waiting.campaign.phase="first-region";waiting.restoration=24.5;
+ waiting.scrap=15;waiting.savedAt=1000;offline(waiting,1001);
+ assert.ok(waiting.restoration>=25);assert.equal(waiting.campaign.phase,"investment-choice","offline restoration crosses the same persisted threshold");
+ assert.equal(valid(JSON.parse(JSON.stringify(waiting))),true);
+ const short=structuredClone(waiting);short.campaign.phase="first-region";short.restoration=25;short.scrap=14.99;
+ advance(short,.01);assert.equal(short.campaign.phase,"first-region","both the restoration and affordability thresholds are required");
+});
+
+test("v3 malformed anchors and campaign shape are rejected without rewriting their save bytes",()=>{
+ const beforeKit=freshCampaign();repairGreenhouse(beforeKit);advance(beforeKit,10);place(beforeKit,17,Machine.Extractor);
+ assert.equal(beforeKit.campaign.phase,"ridge-link");assert.equal(valid(beforeKit),true);
+ const brokenRelay=structuredClone(beforeKit);brokenRelay.cells[13]=Machine.Empty;brokenRelay.cells[0]=Machine.Relay;
+ assert.equal(valid(brokenRelay),false,"moving RELAY13 to tile0 cannot preserve a dead campaign");
+ const missingLife=structuredClone(beforeKit);missingLife.cells[14]=Machine.Empty;missingLife.cells[0]=Machine.Restorer;
+ assert.equal(valid(missingLife),false,"the powered LIFE anchor cannot be relocated during a locked phase");
+ const choice=v3AtChoice(8);
+ for(const mutate of [s=>{s.cells[14]=Machine.Empty;s.cells[0]=Machine.Restorer;},s=>{s.cells[13]=Machine.Empty;s.cells[0]=Machine.Relay;}]){
+  const bad=structuredClone(choice);mutate(bad);assert.equal(valid(bad),false,"investment choice requires the actual connected anchors");
+ }
+ const missingField=structuredClone(choice);delete missingField.campaign.ridgeRelay;assert.equal(valid(missingField),false);
+ const wrongShape=structuredClone(choice);wrongShape.campaign.fieldRelay="no";assert.equal(valid(wrongShape),false);
+ for(const malformed of [brokenRelay,missingLife,missingField,wrongShape]){
+  const raw=JSON.stringify(malformed);assert.equal(valid(JSON.parse(raw)),false);assert.equal(JSON.stringify(JSON.parse(raw)),raw,"unreadable progression bytes remain byte-stable for startup protection");
+ }
 });
 
 test("v2 campaigns reject missing network anchors and firstInvestment before the choice",()=>{
- const repair=freshCampaign();
+ const repair=freshVersionTwoCampaign();
  const restoring=structuredClone(repair);assert.equal(repairGreenhouse(restoring).ok,true);
  const kit=structuredClone(restoring);advance(kit,10);assert.equal(kit.campaign.phase,"mine-kit");
  const firstRegion=structuredClone(kit);assert.equal(redeemMineKit(firstRegion,17).ok,true);
@@ -206,8 +296,8 @@ test("v2 campaigns reject missing network anchors and firstInvestment before the
  assert.equal(valid(ready),true,"the valid second-site state remains saveable");
 });
 
-test("fully opened campaigns and legacy saves keep ordinary later-region claims",()=>{
- const s=freshCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);
+test("fully opened v2 campaigns and legacy saves keep ordinary later-region claims",()=>{
+ const s=freshVersionTwoCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);
  assert.equal(claim(s).ok,true,"the first campaign claim opens the new frontier");
  assert.equal(place(s,7,Machine.Extractor).ok,true);
  assert.equal(s.campaign.phase,"investment-growth");advance(s,60);
@@ -228,8 +318,8 @@ test("fully opened campaigns and legacy saves keep ordinary later-region claims"
  assert.equal(claim(legacy).ok,false,"legacy claims still reset the meter and cannot duplicate");
 });
 
-test("unaffordable, occupied and full-site campaign actions never consume unlocks",()=>{
- const s=freshCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);
+test("v2 unaffordable, occupied and full-site actions never consume unlocks",()=>{
+ const s=freshVersionTwoCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);
  advance(s,160);assert.equal(claim(s).ok,true);
  const phase=s.campaign.phase,grid=s.cells.slice();s.scrap=0;
  assert.equal(place(s,7,Machine.Extractor).ok,false,"unaffordable choice is rejected");
@@ -248,7 +338,7 @@ test("unaffordable, occupied and full-site campaign actions never consume unlock
 
 test("new investment branches expose truthful rates, survive the 25-point gate, and converge",()=>{
  const readyCampaign=()=>{
-  const s=freshCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);
+  const s=freshVersionTwoCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);
   assert.equal(isReady(s),true);assert.equal(claim(s).ok,true);assert.equal(s.campaign.phase,"investment-choice");return s;
  };
  const mineFirst=readyCampaign();
@@ -295,7 +385,7 @@ test("new investment branches expose truthful rates, survive the 25-point gate, 
 });
 
 test("25 recovery threshold is actual, persistable, offline-safe and cannot be crossed by a timer",()=>{
- const s=freshCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);claim(s);
+ const s=freshVersionTwoCampaign();repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);claim(s);
  assert.equal(place(s,7,Machine.Extractor).ok,true);
  assert.equal(s.campaign.phase,"investment-growth");
  const r=rates(s);advance(s,24.9/r.restored);
@@ -313,7 +403,7 @@ test("25 recovery threshold is actual, persistable, offline-safe and cannot be c
 });
 
 test("v1 campaign saves remain byte-stable on their existing forced route",()=>{
- const s=freshCampaign();s.campaign.version=1;delete s.campaign.firstInvestment;
+ const s=freshVersionTwoCampaign();s.campaign.version=1;delete s.campaign.firstInvestment;
  repairGreenhouse(s);advance(s,10);redeemMineKit(s,17);advance(s,200);
  assert.equal(claim(s).ok,true);assert.equal(s.campaign.phase,"expansion");assert.equal(valid(s),true);
  const bytes=JSON.stringify(s),loadedV1=JSON.parse(bytes);

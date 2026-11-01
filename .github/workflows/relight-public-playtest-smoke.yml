@@ -80,23 +80,22 @@ jobs:
         run: |
           set -euo pipefail
           expected=(
-            relight-firstlight-390-opening.png
-            relight-firstlight-390-viewport.png
-            relight-firstlight-390-kit.png
-            relight-firstlight-390-kit-viewport.png
-            relight-firstlight-390-ready.png
-            relight-firstlight-390-ready-viewport.png
-            relight-firstlight-390-awakened.png
-            relight-firstlight-320-viewport.png
-            relight-firstlight-320-opening.png
-            relight-firstlight-desktop-opening.png
-            relight-firstlight-desktop-viewport.png
-            relight-firstlight-320-investment-choice.png
-            relight-firstlight-390-investment-choice.png
-            relight-firstlight-390-investment-growth.png
-            relight-firstlight-390-investment-unlocked.png
-            relight-firstlight-390-reduced-motion.png
-            relight-firstlight-desktop-investment-choice.png
+            relight-firstlight-390-v3-opening-viewport.png
+            relight-firstlight-390-v3-opening-full.png
+            relight-firstlight-1440-v3-opening-viewport.png
+            relight-firstlight-1440-v3-opening-full.png
+            relight-firstlight-390-v3-investment-choice.png
+            relight-firstlight-390-v3-priority-installed.png
+            relight-firstlight-390-v3-field-link.png
+            relight-firstlight-390-v3-ready-mine.png
+            relight-firstlight-desktop-v3-investment-choice.png
+            relight-firstlight-desktop-v3-priority-installed.png
+            relight-firstlight-desktop-v3-field-link.png
+            relight-firstlight-desktop-v3-ready-power.png
+            relight-firstlight-390-v3-open-valley.png
+            relight-firstlight-320-v3-open-valley-default.png
+            relight-firstlight-320-v3-open-valley.png
+            relight-firstlight-desktop-v3-power-priority.png
           )
           missing=0
           for screenshot in "${expected[@]}"; do
@@ -112,21 +111,20 @@ jobs:
         with:
           name: relight-live-web-screenshots
           path: |
-            relight-firstlight-390-opening.png
-            relight-firstlight-390-viewport.png
-            relight-firstlight-390-kit.png
-            relight-firstlight-390-kit-viewport.png
-            relight-firstlight-390-ready.png
-            relight-firstlight-390-ready-viewport.png
-            relight-firstlight-390-awakened.png
-            relight-firstlight-320-viewport.png
-            relight-firstlight-320-opening.png
-            relight-firstlight-desktop-opening.png
-            relight-firstlight-desktop-viewport.png
-            relight-firstlight-320-investment-choice.png
-            relight-firstlight-390-investment-choice.png
-            relight-firstlight-390-investment-growth.png
-            relight-firstlight-390-investment-unlocked.png
-            relight-firstlight-390-reduced-motion.png
-            relight-firstlight-desktop-investment-choice.png
+            relight-firstlight-390-v3-opening-viewport.png
+            relight-firstlight-390-v3-opening-full.png
+            relight-firstlight-1440-v3-opening-viewport.png
+            relight-firstlight-1440-v3-opening-full.png
+            relight-firstlight-390-v3-investment-choice.png
+            relight-firstlight-390-v3-priority-installed.png
+            relight-firstlight-390-v3-field-link.png
+            relight-firstlight-390-v3-ready-mine.png
+            relight-firstlight-desktop-v3-investment-choice.png
+            relight-firstlight-desktop-v3-priority-installed.png
+            relight-firstlight-desktop-v3-field-link.png
+            relight-firstlight-desktop-v3-ready-power.png
+            relight-firstlight-390-v3-open-valley.png
+            relight-firstlight-320-v3-open-valley-default.png
+            relight-firstlight-320-v3-open-valley.png
+            relight-firstlight-desktop-v3-power-priority.png
           if-no-files-found: error

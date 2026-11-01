@@ -1,4 +1,4 @@
-import {Machine,PRICE,TARGET,fresh,freshCampaign,isCampaign,repairGreenhouse,redeemMineKit,loaded,valid,connected,neighbors,rates,place,upgrade,upgradeCost,isReady,estimateRecoverySeconds,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
+import {Machine,PRICE,TARGET,fresh,freshCampaign,isCampaign,STARTER_MINE_SITES,repairGreenhouse,redeemMineKit,loaded,valid,connected,neighbors,rates,place,upgrade,upgradeCost,isReady,estimateRecoverySeconds,claim,resetGrid,advance,offline,mission,suggested} from "./model.mjs";
 
 const SAVE="relight.webplaytest.v1";
 const FIRST="relight.webplaytest.onboarded.v1";
@@ -56,7 +56,16 @@ function readTutorialRecord(){
 }
 let tutorialRecord=readTutorialRecord();
 let tutorialActive=tutorialRecord?.active===true&&tutorialRecord.mode==="live";
-let practiceMode=false,practiceReturn=null;
+let practiceMode=false,practiceReturn=null,sceneBuildMode=false,sceneShowAllSites=false;
+const sceneSiteButtons=new Map();
+function ensureSceneSiteButtons(){
+  const sites=$("scene-sites");
+  for(let index=0;index<25;index++)if(!sceneSiteButtons.has(index)){
+    const button=document.createElement("button");
+    button.type="button";button.className="scene-site";button.dataset.index=String(index);
+    sites.append(button);sceneSiteButtons.set(index,button);
+  }
+}
 let tutorialInitialRegion=tutorialRecord?.initialRegion??state.region;
 let firstPreference=storageGetFirst();
 let allowFirstTutorialStart=false;
@@ -227,13 +236,15 @@ function finishWalkthrough(){
 }
 function campaignLayout(){
   const phase=state.campaign?.phase;
+  if(state.campaign?.version===3&&["mine-kit","mine-disconnected"].includes(phase))
+    return {columns:5,rows:5,indices:[8,10,12,13,14,17],geometry:true,target:-1};
   if(!phase||phase==="open")return {columns:5,rows:5,indices:Array.from({length:25},(_,i)=>i),target:-1};
   if(phase==="repair"||phase==="restore")return {columns:3,rows:1,indices:[12,13,14],target:phase==="repair"?13:-1};
   if(phase==="mine-kit"||phase==="first-region")return {columns:3,rows:2,indices:[12,13,14,17,18,19],target:phase==="mine-kit"?17:-1};
   return {columns:3,rows:3,indices:[7,8,9,12,13,14,17,18,19],target:phase==="expansion"?7:phase==="power"?9:-1};
 }
 function openingInvestmentForecast(machine){
-  const index=machine===Machine.Extractor?7:9;
+  const index=machine===Machine.Extractor?(state.campaign?.version===2?7:23):9;
   const trial={...state,cells:state.cells.slice()};
   trial.cells[index]=machine;
   const forecast=rates(trial);
@@ -247,18 +258,25 @@ function openingInvestmentForecast(machine){
 }
 function renderOpeningWorld(r,ready){
   const scene=$("opening-world");
-  const phase=isCampaign(state)&&state.campaign.phase!=="open"?state.campaign.phase:null;
+  const persistentWorld=state.campaign?.version===3;
+  const phase=isCampaign(state)&&(persistentWorld||state.campaign.phase!=="open")?state.campaign.phase:null;
   const action=$("scene-action"),awaken=$("scene-awaken");
   const choice=$("scene-choice"),choiceMine=$("scene-choice-mine"),choicePower=$("scene-choice-power");
   const practiceReturnButton=$("scene-return"),practiceLabel=$("scene-practice-label");
   if(!phase){
     scene.hidden=true;
     action.hidden=true;awaken.hidden=true;choice.hidden=true;
+    $("scene-build-controls").hidden=true;$("scene-sites").hidden=true;
     practiceReturnButton.hidden=true;practiceLabel.hidden=true;
     lastOpeningPhase=null;
     return;
   }
   scene.hidden=false;
+  const openValley=state.campaign?.version===3&&phase==="open";
+  scene.classList.toggle("valley-open",openValley);
+  $("scene-build-controls").hidden=!openValley;
+  if(!openValley){sceneBuildMode=false;sceneShowAllSites=false;document.body.classList.remove("valley-advanced-open");}
+  $("scene-advanced-toggle").setAttribute("aria-pressed",String(document.body.classList.contains("valley-advanced-open")));
   practiceReturnButton.hidden=!practiceMode;
   practiceLabel.hidden=!practiceMode;
   scene.dataset.phase=phase;
@@ -272,18 +290,114 @@ function renderOpeningWorld(r,ready){
   scene.dataset.growth=growth.toFixed(3);
   scene.style.setProperty("--scene-growth",growth.toFixed(3));
   $("scene-sprouts").style.opacity=String(Math.min(1,growth));
-  $("scene-frontier").style.opacity=state.region>0?"1":"0";
+  const frontierOpen=state.region>0||state.campaign?.version===3&&["ridge-link","first-region","investment-choice","field-link","frontier-life"].includes(phase);
+  $("scene-frontier").style.opacity=frontierOpen?"1":"0";
   const frontierGrowth=state.region===1?Math.max(0,Math.min(1,state.restoration/25)):state.region>1?1:0;
   $("scene-frontier-sprouts").style.opacity=String(frontierGrowth);
   const machines=[
     ["scene-mine-17",17,Machine.Extractor],
     ["scene-mine-7",7,Machine.Extractor],
-    ["scene-power",9,Machine.Generator]
+    ["scene-mine-8",8,Machine.Extractor],
+    ["scene-mine-10",10,Machine.Extractor],
+    ["scene-power",9,Machine.Generator],
+    ["scene-ridge-mine",23,Machine.Extractor],
+    ["scene-ridge-relay",18,Machine.Relay],
+    ["scene-field-relay",19,Machine.Relay],
+    ["scene-frontier-life",24,Machine.Restorer]
   ];
   for(const [id,index,machine] of machines){
     const element=$(id),built=state.cells[index]===machine;
     element.style.opacity=built?"1":"0";
     element.classList.toggle("scene-machine-offline",built&&!r.connected[index]);
+  }
+  const valleyPositions=Array.from({length:25},(_,index)=>[12+(index%5)*19,16+Math.floor(index/5)*17]);
+  const openValleyPoints=Object.fromEntries(valleyPositions.map(([x,y],index)=>[index,[x,y]]));
+  const worldPoints=openValley?openValleyPoints:{12:[193,270],13:[422,270],14:[700,260],7:[342,258],8:[487,263],9:[623,294],10:[882,275],17:[750,263],18:[828,242],19:[800,315],23:[906,311],24:[858,345]};
+  const legalSceneSites=[];
+  if(openValley&&sceneBuildMode&&selected!==Machine.Empty){
+    for(let index=0;index<state.cells.length;index++)if(state.cells[index]===Machine.Empty){
+      const trial=state.cells.slice();trial[index]=selected;const links=connected({...state,cells:trial});
+      if(links[index]&&(selected!==Machine.Generator||neighbors(index).some(n=>state.cells[n]===Machine.Restorer&&links[n])))
+        legalSceneSites.push(index);
+    }
+  }
+  const center=12;
+  legalSceneSites.sort((a,b)=>(Math.abs(a%5-center%5)+Math.abs(Math.floor(a/5)-Math.floor(center/5)))-
+    (Math.abs(b%5-center%5)+Math.abs(Math.floor(b/5)-Math.floor(center/5)))||a-b);
+  const visibleSceneSites=new Set(sceneShowAllSites?legalSceneSites:legalSceneSites.slice(0,8));
+  const moreSites=$("scene-more-sites");
+  moreSites.hidden=!openValley||!sceneBuildMode||legalSceneSites.length<=8;
+  moreSites.textContent=sceneShowAllSites?"Fewer sites":"More connected sites · "+(legalSceneSites.length-8);
+  const wires=$(openValley?"scene-network-wires-open":"scene-network-wires"),svgNS="http://www.w3.org/2000/svg";
+  wires.replaceChildren();
+  for(let from=0;from<state.cells.length;from++){
+    if(state.cells[from]===Machine.Empty||!worldPoints[from])continue;
+    for(const to of neighbors(from)){
+      if(to<=from||state.cells[to]===Machine.Empty||!worldPoints[to]||
+        (!openValley&&((from===12&&to===13)||(from===13&&to===14))))continue;
+      const path=document.createElementNS(svgNS,"path"),a=worldPoints[from],b=worldPoints[to],curve=openValley?2:18;
+      path.setAttribute("d",`M${a[0]} ${a[1]} Q${(a[0]+b[0])/2} ${(a[1]+b[1])/2-curve} ${b[0]} ${b[1]}`);
+      path.setAttribute("class","scene-network-wire "+(r.connected[from]&&r.connected[to]?"scene-network-wire-live":"scene-network-wire-dead"));
+      path.setAttribute("data-from",String(from));path.setAttribute("data-to",String(to));wires.append(path);
+    }
+  }
+  const sites=$("scene-sites");sites.hidden=!openValley;
+  if(openValley){
+    ensureSceneSiteButtons();
+    document.querySelectorAll(".scene-build-tool").forEach(button=>{
+      const machine=Number(button.dataset.machine);
+      button.setAttribute("aria-pressed",String(sceneBuildMode&&selected===machine));
+      button.setAttribute("aria-label",sceneBuildMode&&selected===machine?
+        words[machine]+" site choices are open; press again to close them":
+        words[machine]+(machine===Machine.Empty?" selected for removal":" costs "+PRICE[machine]+" scrap"));
+    });
+    for(let index=0;index<state.cells.length;index++){
+      const type=state.cells[index],site=sceneSiteButtons.get(index);
+      const trial=state.cells.slice();trial[index]=selected;
+      const links=selected===Machine.Empty?r.connected:connected({...state,cells:trial});
+      const legal=selected!==Machine.Empty&&selected!==Machine.Core&&links[index]&&
+        (selected!==Machine.Generator||neighbors(index).some(n=>state.cells[n]===Machine.Restorer&&links[n]));
+      site.classList.toggle("scene-site-empty",type===Machine.Empty);
+      site.classList.toggle("scene-site-built",type!==Machine.Empty);
+      const [x,y]=valleyPositions[index];
+      const left=x+"%",top=y+"%";
+      if(site.style.left!==left)site.style.left=left;
+      if(site.style.top!==top)site.style.top=top;
+      setTextIfChanged(site,type===Machine.Empty?"+":glyph[type]);
+      const status=type===Machine.Empty?"empty site":machineStatusDescription(machineStatuses(type,index,r),r);
+      site.setAttribute("aria-label",type===Machine.Empty?
+        selected===Machine.Empty?"Site "+(index+1)+"; choose a structure before building":"Site "+(index+1)+"; build "+words[selected]+" for "+PRICE[selected]+" scrap here":"Site "+(index+1)+": "+words[type]+(status?"; "+status:""));
+      site.title=type===Machine.Empty?"Build "+words[selected]+" at site "+(index+1):words[type]+(status?" · "+status:"");
+      site.hidden=type===Machine.Empty&&(!sceneBuildMode||!legal||!visibleSceneSites.has(index));
+      site.disabled=type===Machine.Empty?(selected===Machine.Empty||!legal||state.scrap<PRICE[selected]):false;
+      site.classList.toggle("scene-site-offline",type!==Machine.Empty&&!r.connected[index]);
+      if(type!==Machine.Empty)site.dataset.machine=String(type);else delete site.dataset.machine;
+    }
+  }
+  const preview=$("scene-network-preview");
+  const previewPath=phase==="ridge-link"?"M422 270 Q620 225 828 242":
+    phase==="field-link"?"M700 260 Q752 286 800 315":
+    phase==="frontier-life"?"M800 315 Q830 330 858 345":null;
+  preview.setAttribute("d",previewPath||"M0 0");
+  preview.setAttribute("opacity",previewPath?"1":"0");
+  const choosingMine=state.campaign?.version===3&&["mine-kit","mine-disconnected","ridge-link"].includes(phase);
+  for(const index of STARTER_MINE_SITES){
+    const socket=$("scene-socket-"+index),type=state.cells[index];
+    const occupiedStarter=type===Machine.Extractor&&(
+      phase==="mine-disconnected"||phase==="ridge-link"&&index===state.campaign.starterMineSite);
+    const trial=state.cells.slice();trial[index]=Machine.Extractor;
+    const willConnect=connected({...state,cells:trial})[index];
+    socket.hidden=!choosingMine||type!==Machine.Empty&&!occupiedStarter;
+    socket.classList.toggle("socket-occupied",occupiedStarter);
+    socket.classList.toggle("socket-live",willConnect);
+    socket.classList.toggle("socket-dark",!willConnect);
+    const undoDarkStarter=occupiedStarter&&phase==="mine-disconnected";
+    socket.textContent=undoDarkStarter?"UNDO · DARK":occupiedStarter?"MOVE · LIVE":willConnect?"PLACE · LIVE":"PLACE · DARK";
+    socket.setAttribute("aria-label",undoDarkStarter?
+      "Undo the disconnected starter MINE at site "+index+"; the same earned kit remains available":
+      occupiedStarter?
+        "Move the connected starter MINE from site "+index+" before placing the ridge relay":
+        "Place the earned MINE kit at site "+index+" for free; this socket is "+(willConnect?"connected to the reactor and will produce salvage":"disconnected and will not produce salvage"));
   }
   const lit=relayConnected&&state.cells[14]===Machine.Restorer&&r.connected[14];
   scene.classList.toggle("greenhouse-lit",lit);
@@ -301,7 +415,10 @@ function renderOpeningWorld(r,ready){
   }
   let target=null;
   if(phase==="repair")target={label:"PATCH LINK",aria:"Patch the broken relay, spending 4 scrap",cost:4,position:"repair"};
-  if(phase==="mine-kit")target={label:"INSTALL MINE",aria:"Install your earned MINE kit at the marked greenhouse site",cost:0,position:"mine-kit"};
+  if(phase==="mine-kit"&&state.campaign.version<3)target={label:"INSTALL MINE",aria:"Install your earned MINE kit at the marked greenhouse site",cost:0,position:"mine-kit"};
+  if(phase==="ridge-link")target={label:"CONNECT RIDGE",aria:"Build a RELAY at the ridge socket for 4 scrap; this extends the actual powered network",cost:PRICE[Machine.Relay],position:"ridge-link"};
+  if(phase==="field-link")target={label:"OPEN FIELD LINK",aria:"Build a RELAY at the field socket for 4 scrap",cost:PRICE[Machine.Relay],position:"field-link"};
+  if(phase==="frontier-life")target={label:"RESTORE NEW SITE",aria:"Build a LIFE engine at the newly connected frontier for 18 scrap",cost:PRICE[Machine.Restorer],position:"frontier-life"};
   if(phase==="expansion")target={label:"PLACE MINE",aria:"Place a second MINE at the newly opened site for 12 scrap",cost:PRICE[Machine.Extractor],position:"expansion"};
   if(phase==="power")target={label:"PLACE POWER",aria:"Place POWER beside LIFE for 15 scrap",cost:PRICE[Machine.Generator],position:"power"};
   if(phase==="investment-second"){
@@ -317,9 +434,12 @@ function renderOpeningWorld(r,ready){
     action.setAttribute("aria-label",target.aria);
     action.disabled=state.scrap<target.cost;
   }
-  const canAwaken=phase==="first-region"&&ready;
+  const canAwaken=(phase==="first-region"&&ready&&(
+    state.campaign?.version!==3||!!state.campaign.firstInvestment&&state.campaign.fieldRelay))||
+    (openValley&&ready);
   awaken.hidden=!canAwaken;
-  if(canAwaken)awaken.setAttribute("aria-label","Awaken the first greenhouse region and reveal a new site");
+  if(canAwaken)awaken.setAttribute("aria-label",openValley?
+    "Awaken the next valley region and keep the connected landscape open":"Awaken the first greenhouse region and reveal a new site");
   if(lastOpeningPhase!==phase){
     setTextIfChanged($("opening-stage-live"),$("world-title").textContent+". "+$("world-copy").textContent);
     lastOpeningPhase=phase;
@@ -340,7 +460,11 @@ function runCampaignAction(event){
   const phase=state.campaign?.phase;
   let result;
   if(phase==="repair")result=repairGreenhouse(state);
-  else if(phase==="mine-kit")result=redeemMineKit(state,17);
+  else if(phase==="mine-kit"&&state.campaign.version<3)result=redeemMineKit(state,17);
+  else if(phase==="mine-disconnected")result=place(state,state.cells.findIndex(type=>type===Machine.Extractor),Machine.Empty);
+  else if(phase==="ridge-link")result=place(state,18,Machine.Relay);
+  else if(phase==="field-link")result=place(state,19,Machine.Relay);
+  else if(phase==="frontier-life")result=place(state,24,Machine.Restorer);
   else if(phase==="expansion")result=place(state,7,Machine.Extractor);
   else if(phase==="power")result=place(state,9,Machine.Generator);
   else if(phase==="investment-second")result=state.campaign.firstInvestment==="mine"?
@@ -350,12 +474,26 @@ function runCampaignAction(event){
   if(result.ok){persist();render(true);pulseOpeningScene();}
   if(event?.detail===0&&result.ok){
     const next=$("scene-awaken").hidden?$("scene-action"):$("scene-awaken");
-    const target=next.hidden?$("world-title"):next;
+    const target=state.campaign?.version===3?$("mission-title"):next.hidden?$("world-title"):next;
     target?.focus({preventScroll:true});
   }
 }
+function chooseStarterMine(index,event){
+  if(state.campaign?.version!==3||!["mine-kit","mine-disconnected","ridge-link"].includes(state.campaign.phase))return;
+  const canUndo=state.campaign.phase==="mine-disconnected"&&state.cells[index]===Machine.Extractor;
+  const canMove=state.campaign.phase==="ridge-link"&&state.cells[index]===Machine.Extractor;
+  const result=canUndo||canMove?
+    place(state,index,Machine.Empty):place(state,index,Machine.Extractor);
+  notice(result.message,!result.ok);
+  if(result.ok){persist();render(true);pulseOpeningScene();}
+  if(event?.detail===0&&result.ok){
+    const next=[...document.querySelectorAll(".scene-socket:not([hidden])")][0];
+    (next||$("mission-title"))?.focus({preventScroll:true});
+  }
+}
 function chooseOpeningInvestment(machine,index,event){
-  if(state.campaign?.version!==2||state.campaign.phase!=="investment-choice")return;
+  if(![2,3].includes(state.campaign?.version)||state.campaign.phase!=="investment-choice")return;
+  if(machine===Machine.Extractor)index=state.campaign.version===2?7:23;
   const result=place(state,index,machine);
   notice(result.message,!result.ok);
   if(result.ok){
@@ -373,8 +511,10 @@ function awakenRegion(event){
   persist();render(true);
   showClaimRecap(state.scrap-previousScrap);
   if(event?.detail===0){
-    const next=isCampaign(state)&&state.campaign.phase!=="open"?
-      ($("scene-action").hidden?$("world-title"):$("scene-action")):$("region-state");
+    const next=state.campaign?.version===3&&state.campaign.phase==="frontier-life"?$("scene-action"):
+      state.campaign?.version===3&&state.campaign.phase==="investment-choice"?$("scene-choice-mine"):
+      isCampaign(state)&&state.campaign.phase!=="open"?
+      ($("scene-action").hidden?$("mission-title"):$("scene-action")):$("region-state");
     next.focus({preventScroll:true});
   }
 }
@@ -382,10 +522,12 @@ function renderCampaign(){
   const campaign=state.campaign;
   const active=!!campaign&&campaign.phase!=="open";
   document.body.classList.toggle("campaign-opening",active);
+  document.body.classList.toggle("campaign-valley",campaign?.version===3);
+  document.body.classList.toggle("campaign-mine-sites",campaign?.version===3&&["mine-kit","mine-disconnected"].includes(campaign.phase));
   $("campaign-action").hidden=true;
   if(active){
     const phase=campaign.phase;
-    const prompts={
+    const promptsV2={
       repair:["Bring the greenhouse back online","A relay is broken. Repair the highlighted link with 4 scrap.","REPAIR RELAY · 4 SCRAP"],
       restore:["The greenhouse is waking","Its LIFE engine is restoring the ground. At 5 restored points, you earn a MINE starter kit."],
       "mine-kit":["You earned a MINE kit","Install your free starter MINE at the highlighted site. The kit stays yours even if scrap runs out.","INSTALL EARNED MINE · FREE"],
@@ -396,8 +538,20 @@ function renderCampaign(){
       "investment-growth":["Your first choice is working","Restore 25 points in this region to open the other site. Your chosen machine keeps producing while the greenhouse grows."],
       "investment-second":["The frontier opens","25 real recovery points restored. Add the other investment to complete the network and unlock the full grid."]
     };
+    const promptsV3={
+      repair:["Bring the greenhouse back online","Patch the broken link. The greenhouse starts growing as soon as power reaches LIFE.","REPAIR RELAY · 4 SCRAP"],
+      restore:["The valley begins to grow","LIFE is restoring the greenhouse. At 5 real restoration points, you earn one MINE kit."],
+      "mine-kit":["Choose a MINE socket","A DARK trial can be undone. LIVE installs the kit; you can move it again before laying the ridge relay.",null],
+      "mine-disconnected":["That site has no power path","The MINE is offline here. Move it to a LIVE socket or undo it; the same kit stays available.",null],
+      "ridge-link":["Carry power to the ridge","Place a RELAY on the highlighted ridge socket. This is a real network connection; your MINE can still be moved before you lay the cable."],
+      "first-region":["The valley is growing",state.campaign.firstInvestment?"Your "+(state.campaign.firstInvestment==="mine"?"ridge MINE":"greenhouse POWER")+" is changing this recovery. LIFE is at "+rates(state).restored.toFixed(2)+"/s; connect the east field at 50, then awaken at 100.":"The ridge is connected. At 25 restored and 15 scrap, choose a ridge MINE or greenhouse POWER while LIFE keeps working."],
+      "investment-choice":["Set the valley's first priority","Choose the ridge MINE for more salvage or greenhouse POWER for faster recovery. The forecast uses the live network; the other build remains optional."],
+      "field-link":["Connect the east field","Add a RELAY at the highlighted field socket. The cable will reach a new greenhouse site after this region wakes."],
+      "frontier-life":["A new greenhouse site is open","The first region is awake. Build LIFE at the newly connected east site to begin the next restoration; the full construction grid stays sealed until it starts."]
+    };
+    const prompts=campaign.version===3?promptsV3:promptsV2;
     const [title,copy,action]=prompts[phase]||prompts.repair;
-    const sceneCopy={
+    const sceneCopyV2={
       repair:["First Light","Patch the broken link for 4 scrap."],
       restore:["Power returns","Watch LIFE work. A MINE kit is earned at 5 restored."],
       "mine-kit":["Scrap becomes a tool","Place your free MINE kit at the marked site."],
@@ -408,14 +562,30 @@ function renderCampaign(){
       "investment-growth":["Your choice is growing","Restore "+Math.floor(state.restoration)+" / 25 points to open the other site."],
       "investment-second":["A new site is ready","25 recovery points restored. Build the other investment to finish the opening."]
     }[phase]||["First Light","Restore the greenhouse."];
+    const sceneCopyV3={
+      repair:["First Light","Patch the broken link for 4 scrap."],
+      restore:["Power returns","Watch LIFE work. A MINE kit is earned at 5 restored."],
+      "mine-kit":["Choose a salvage socket","A DARK trial can be undone. LIVE installs the kit; move it before connecting the ridge if needed."],
+      "mine-disconnected":["No wire reaches this site","The MINE cannot produce here. Move it to a lit socket or undo the placement for free."],
+      "ridge-link":["Connect the ridge","Place a RELAY at the highlighted socket; its live cable extends the actual network."],
+      "first-region":["The valley is growing",state.campaign.firstInvestment?"The "+(state.campaign.firstInvestment==="mine"?"ridge MINE raises salvage":"greenhouse POWER raises LIFE")+" is active. "+(state.campaign.fieldRelay?"Awaken at 100 restoration.":"Connect the east field at 50 restoration."):"At 25 restoration and 15 scrap, choose the ridge MINE or greenhouse POWER."],
+      "investment-choice":["Choose a valley priority","MINE builds on the ridge and raises salvage; POWER strengthens the greenhouse and speeds LIFE."],
+      "field-link":["Connect the east field","Lay the next RELAY to make a new greenhouse site reachable."],
+      "frontier-life":["First light reaches farther","Restore the newly connected greenhouse to open the wider construction network."]
+    }[phase]||["The valley network is live","Connect the valley to reveal its next site."];
+    const sceneCopy=campaign.version===3?sceneCopyV3:sceneCopyV2;
     setTextIfChanged($("world-title"),sceneCopy[0]);
     setTextIfChanged($("world-copy"),sceneCopy[1]);
     setTextIfChanged($("mission-eyebrow"),"BLACKOUT · FIRST LIGHT");
-    setTextIfChanged($("mission-number"),phase==="repair"?"01":phase==="restore"?"02":phase==="mine-kit"?"03":phase==="first-region"?"04":phase==="expansion"?"05":"06");
+    const v3Number={repair:"01",restore:"02","mine-kit":"03","mine-disconnected":"03","ridge-link":"04","first-region":"05","investment-choice":"06","field-link":"07","frontier-life":"08"};
+    setTextIfChanged($("mission-number"),campaign.version===3?v3Number[phase]||"05":
+      phase==="repair"?"01":phase==="restore"?"02":phase==="mine-kit"?"03":phase==="first-region"?"04":phase==="expansion"?"05":"06");
     setTextIfChanged($("mission-title"),title);
     setTextIfChanged($("mission-description"),copy);
     $("mission-stages").setAttribute("aria-label","Opening progress");
-    const completed={repair:0,restore:1,"mine-kit":2,"first-region":3,expansion:4,power:5}[phase]||0;
+    const completed=campaign.version===3?
+      ({repair:0,restore:1,"mine-kit":2,"mine-disconnected":2,"ridge-link":3,"first-region":4,"investment-choice":5,"field-link":6,"frontier-life":7}[phase]||0):
+      ({repair:0,restore:1,"mine-kit":2,"first-region":3,expansion:4,power:5}[phase]||0);
     [...$("mission-stages").children].forEach((dot,index)=>{dot.className=index<completed?"done":index===completed?"active":"";});
     if(action){
       $("campaign-action").textContent=action;
@@ -435,12 +605,21 @@ function renderCampaign(){
     $("tiles").style.gridTemplateColumns=`repeat(${layout.columns},minmax(0,1fr))`;
     $("tiles").style.gridTemplateRows=`repeat(${layout.rows},minmax(0,1fr))`;
     $("network-board").style.aspectRatio=`${layout.columns} / ${layout.rows}`;
-    $("network-board-title").textContent=phase==="repair"||phase==="restore"?"Ruined greenhouse · broken relay":phase==="mine-kit"||phase==="first-region"?"Greenhouse · first MINE site":"Frontier · new site";
-    $("network-eyebrow").textContent=phase==="repair"||phase==="restore"?"FIRST LIGHT / REPAIR LINK":phase==="mine-kit"||phase==="first-region"?"GREENHOUSE / STARTER SITE":"NEW FRONTIER / EXPANSION";
+    $("network-board-title").textContent=campaign.version===3&&["mine-kit","mine-disconnected"].includes(phase)?"Choose a MINE socket":phase==="repair"||phase==="restore"?"Ruined greenhouse · broken relay":phase==="mine-kit"||phase==="first-region"?"Greenhouse · first MINE site":"Frontier · new site";
+    $("network-eyebrow").textContent=campaign.version===3&&["mine-kit","mine-disconnected"].includes(phase)?"FIELD / SALVAGE CONNECTION":phase==="repair"||phase==="restore"?"FIRST LIGHT / REPAIR LINK":phase==="mine-kit"||phase==="first-region"?"GREENHOUSE / STARTER SITE":"NEW FRONTIER / EXPANSION";
   }else{
-    const defaultTitle="Every world<br>deserves <em>another dawn.</em>";
-    if($("world-title").innerHTML!==defaultTitle)$("world-title").innerHTML=defaultTitle;
-    setTextIfChanged($("world-copy"),"The planet has gone quiet. Restore its energy network, power the machines and watch life return—one region at a time.");
+    if(campaign?.version===3){
+      setTextIfChanged($("world-title"),"The valley network is alive");
+      const active=[];
+      if(state.cells[23]===Machine.Extractor)active.push("ridge MINE");
+      if(state.cells[9]===Machine.Generator)active.push("greenhouse POWER");
+      const route="Currently installed: "+(active.join(" + ")||"no ridge investment")+". Live machine status and forecasts follow the current network.";
+      setTextIfChanged($("world-copy"),route);
+    }else{
+      const defaultTitle="Every world<br>deserves <em>another dawn.</em>";
+      if($("world-title").innerHTML!==defaultTitle)$("world-title").innerHTML=defaultTitle;
+      setTextIfChanged($("world-copy"),"The planet has gone quiet. Restore its energy network, power the machines and watch life return—one region at a time.");
+    }
     $("campaign-wallet").hidden=true;
     $("network-board").style.aspectRatio="1 / 1";
     $("tiles").style.gridTemplateColumns="repeat(5,minmax(0,1fr))";
@@ -726,9 +905,11 @@ for(let i=0;i<25;i++){
 function choose(machine,manual=true){
   selected=machine;
   $("machine-readout").textContent=machineExplanation(rates(state));
-  document.querySelectorAll(".tool, .quick-tool").forEach(el=>{
+  document.querySelectorAll(".tool, .quick-tool, .scene-build-tool").forEach(el=>{
     el.setAttribute("aria-pressed",String(Number(el.dataset.machine)===selected));
   });
+  if($("scene-site-readout")&&state.campaign?.version===3&&state.campaign.phase==="open")
+    setTextIfChanged($("scene-site-readout"),machine===Machine.Empty?"REMOVE selected · choose a built site in the valley.":words[machine]+" selected · choose a valley site to build.");
   const hint=suggested(state),goal=mission(state);
   const guided=(goal===0&&selected===Machine.Generator)||
     (goal===1&&selected===Machine.Extractor);
@@ -750,8 +931,38 @@ $("scene-choice-mine").addEventListener("click",event=>chooseOpeningInvestment(M
 $("scene-choice-power").addEventListener("click",event=>chooseOpeningInvestment(Machine.Generator,9,event));
 $("scene-awaken").addEventListener("click",awakenRegion);
 $("scene-return").addEventListener("click",returnToSavedWorld);
+document.querySelectorAll(".scene-build-tool").forEach(button=>button.addEventListener("click",()=>{
+  const machine=Number(button.dataset.machine);
+  if(sceneBuildMode&&selected===machine){
+    sceneBuildMode=false;sceneShowAllSites=false;setTextIfChanged($("scene-site-readout"),"Site choices closed. The valley keeps running.");
+    renderOpeningWorld(rates(state),isReady(state));return;
+  }
+  sceneBuildMode=true;sceneShowAllSites=false;choose(machine,false);renderOpeningWorld(rates(state),isReady(state));
+}));
+$("scene-more-sites").addEventListener("click",()=>{
+  sceneShowAllSites=!sceneShowAllSites;renderOpeningWorld(rates(state),isReady(state));
+});
+$("scene-advanced-toggle").addEventListener("click",event=>{
+  const enabled=document.body.classList.toggle("valley-advanced-open");
+  event.currentTarget.setAttribute("aria-pressed",String(enabled));
+  event.currentTarget.textContent=enabled?"Return to valley":"Advanced network";
+});
+$("scene-sites").addEventListener("click",event=>{
+  const site=event.target.closest(".scene-site");if(!site)return;
+  const index=Number(site.dataset.index),type=state.cells[index];
+  if(type===Machine.Empty){tap(index,event);return;}
+  if(sceneBuildMode&&selected===Machine.Empty&&type!==Machine.Core){tap(index,event);return;}
+  const description=machineStatusDescription(machineStatuses(type,index,rates(state)),rates(state));
+  const text="Site "+(index+1)+" · "+words[type]+(description?" · "+description:"");
+  setTextIfChanged($("scene-site-readout"),text);setTextIfChanged($("machine-readout"),text);
+});
+for(const index of STARTER_MINE_SITES){
+  const socket=$("scene-socket-"+index);
+  if(socket)socket.addEventListener("click",event=>chooseStarterMine(index,event));
+}
 function tap(index,event){
   if(isCampaign(state)&&state.campaign.phase!=="open"){
+    if(state.campaign.version===3&&["mine-kit","mine-disconnected"].includes(state.campaign.phase))return;
     if(index===campaignLayout().target)runCampaignAction(event);
     return;
   }
@@ -781,11 +992,16 @@ $("repair").addEventListener("click",()=>{
 const welcome=$("welcome");
 function openGuide(){
   if(isCampaign(state)){
+    const valleyCampaign=state.campaign.version===3;
     $("begin-label").textContent=state.campaign.phase==="open"&&!practiceMode?"REPLAY OPENING IN PRACTICE":"CONTINUE OPENING";
     $("dismiss-help").textContent="Return to the greenhouse";
     $("welcome-copy").textContent=state.campaign.phase==="open"&&!practiceMode?
-      "Replay the first repair, earned MINE kit, region awakening and POWER unlock in a temporary world. Your current save stays separate.":
-      "Bring the greenhouse online, earn a MINE kit through restoration, awaken the first region, then introduce POWER when the reactor is strained.";
+      valleyCampaign?
+        "Replay the broken-relay repair, earned MINE kit, ridge-versus-greenhouse choice and frontier LIFE in a temporary valley. Your saved world stays separate.":
+        "Replay the first repair, earned MINE kit, region awakening and POWER unlock in a temporary world. Your current save stays separate.":
+      valleyCampaign?
+        "Repair the relay and earn a MINE kit through real restoration. At 25 restored with 15 scrap, choose more ridge salvage or faster greenhouse LIFE, connect the east field, then awaken the valley.":
+        "Bring the greenhouse online, earn a MINE kit through restoration, awaken the first region, then introduce POWER when the reactor is strained.";
     document.querySelector(".guide-steps").hidden=true;
   }else{
     $("dismiss-help").textContent="Explore without walkthrough";
@@ -873,14 +1089,22 @@ function render(force=false){
       restore:state.restoration>=5?"MINE kit earned · installing now":
         Math.floor(state.restoration)+" / 5 points to MINE kit",
       "mine-kit":"MINE kit earned · one-time reward",
-      "first-region":ready?"First region ready to awaken": "First region · "+Math.floor(percentage)+"% restored",
+      "ridge-link":"Ridge relay needed · 4 scrap",
+      "first-region":ready&&state.campaign.firstInvestment&&state.campaign.fieldRelay?"Region ready · awaken the valley":
+        !state.campaign.firstInvestment?Math.floor(state.restoration)+" / 25 restoration · "+readable(state.scrap)+" / 15 scrap for priority":
+        !state.campaign.fieldRelay?Math.floor(state.restoration)+" / 50 restoration · east link next":
+        Math.floor(state.restoration)+" / 100 restoration · "+(state.campaign.firstInvestment==="mine"?"ridge MINE route":"greenhouse POWER route"),
+      "investment-choice":"Choose MINE · 12 or POWER · 15",
+      "field-link":"East relay needed · 4 scrap",
+      "frontier-life":"New LIFE site · 18 scrap",
       expansion:"New site unlocked · second MINE needed",
       power:"Power output "+Math.round(r.fraction*100)+"% · POWER can relieve the overload"
     };
     $("region-state").textContent=campaignStatus[phase]||"Opening objective";
   }
-  $("revive").hidden=!ready||campaignOpening&&state.campaign.phase!=="first-region";
-  $("revive").disabled=!ready||campaignOpening&&state.campaign.phase!=="first-region";
+  const persistentValley=state.campaign?.version===3&&state.campaign.phase==="open";
+  $("revive").hidden=!ready||persistentValley||campaignOpening&&state.campaign.phase!=="first-region";
+  $("revive").disabled=!ready||persistentValley||campaignOpening&&state.campaign.phase!=="first-region";
   $("revive-label").textContent=ready?"AWAKEN REGION "+String(state.region+1).padStart(2,"0"):"AWAKEN REGION";
   $("revive-hint").hidden=!ready;
   if(m!==lastGoal){
@@ -900,7 +1124,12 @@ function render(force=false){
       repair:"Repair the highlighted broken relay.",
       restore:"Relay connected · LIFE is restoring the greenhouse.",
       "mine-kit":"Starter MINE kit earned · install it at the highlighted site.",
-      "first-region":"MINE connected · LIFE is restoring the first region.",
+      "mine-disconnected":"MINE offline · move it to a LIVE socket or undo.",
+      "ridge-link":"Place the relay at the ridge socket.",
+      "first-region":state.campaign.firstInvestment?"Route active · connect the east field at 50 restoration.":"Restore to 25 and hold 15 scrap to choose a route.",
+      "investment-choice":"Choose the MINE or POWER site in the valley.",
+      "field-link":"Restore to 50, then connect the east field.",
+      "frontier-life":"Build LIFE at the new site to unlock the wider network.",
       expansion:"New frontier open · install the highlighted MINE.",
       power:"Reactor strained · install POWER beside LIFE."
     }[state.campaign.phase];
@@ -916,7 +1145,9 @@ function render(force=false){
   const cellKey=state.cells.join(",")+"|"+hint+"|"+(state.scrap>0?"fuel":"empty")+"|"+r.fraction+"|"+phase;
   if(force||cellKey!==lastCells){
     lastCells=cellKey;
-    const visible=new Map(layout.indices.map((index,position)=>[index,{column:position%layout.columns+1,row:Math.floor(position/layout.columns)+1}]));
+    const visible=new Map(layout.indices.map((index,position)=>[index,layout.geometry?
+      {column:index%5+1,row:Math.floor(index/5)+1}:
+      {column:position%layout.columns+1,row:Math.floor(position/layout.columns)+1}]));
     const links=r.connected;
     tiles.forEach(({btn,symbol,label},i)=>{
       const type=state.cells[i];

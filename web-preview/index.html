@@ -51,7 +51,7 @@
     </div>
     <div class="opening-world" id="opening-world" data-phase="repair" data-powered="false"
       role="group" aria-label="First Light field scene">
-      <svg class="opening-landscape" viewBox="0 0 960 420" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <svg id="opening-landscape" class="opening-landscape" viewBox="0 0 960 420" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
         <defs>
           <linearGradient id="scene-sky" x2="0" y2="1"><stop stop-color="#132d40"/><stop offset="1" stop-color="#244453"/></linearGradient>
           <linearGradient id="scene-ground" x2="0" y2="1"><stop stop-color="#33424a"/><stop offset="1" stop-color="#182c35"/></linearGradient>
@@ -73,6 +73,8 @@
         <path class="scene-cable-dead" d="M218 272 C282 256 322 285 377 270 M464 270 C520 253 572 280 648 267"/>
         <path class="scene-cable-live" d="M218 272 C282 256 322 285 377 270 L464 270 C520 253 572 280 648 267"/>
         <path class="scene-flow" pathLength="1" d="M218 272 C282 256 322 285 377 270 L464 270 C520 253 572 280 648 267"/>
+        <g id="scene-network-wires" aria-hidden="true"></g>
+        <path id="scene-network-preview" class="scene-network-preview" d="M422 270 Q620 225 828 242" opacity="0" aria-hidden="true"/>
         <g id="scene-reactor">
           <circle class="scene-reactor-aura" cx="193" cy="268" r="83" fill="url(#scene-reactor-glow)"/>
           <path d="M125 307 L137 226 Q193 189 249 226 L261 307Z" fill="#314a54" stroke="#819c96" stroke-width="3"/>
@@ -106,7 +108,7 @@
         <g id="scene-frontier" opacity="0">
           <path d="M837 287L854 256L871 287Z" fill="#6b867b" stroke="#9db8a2" stroke-width="3"/>
           <path d="M824 312H885" stroke="#d4ba7e" stroke-width="4" stroke-dasharray="6 7"/>
-          <text x="854" y="336" text-anchor="middle" fill="#d8c590" font-size="10" font-weight="800" letter-spacing="1">NEW SITE</text>
+          <text x="854" y="336" text-anchor="middle" fill="#d8c590" font-size="10" font-weight="800" letter-spacing="1">SALVAGE RIDGE</text>
         </g>
         <g id="scene-frontier-sprouts" opacity="0">
           <path d="M828 309Q826 291 818 287M828 309Q834 292 844 288M881 309Q880 296 873 292" fill="none" stroke="#a8e49e" stroke-width="4" stroke-linecap="round"/>
@@ -125,26 +127,75 @@
           <path d="M122 279V255L139 237M123 255L106 238" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
           <circle cx="123" cy="253" r="7" fill="#e4c47e"/>
         </g>
+        <g id="scene-mine-8" class="scene-machine" opacity="0" transform="translate(365 10)">
+          <path d="M94 301H150L144 280H101Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M122 279V255L139 237M123 255L106 238" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="123" cy="253" r="7" fill="#e4c47e"/>
+        </g>
+        <g id="scene-mine-10" class="scene-machine" opacity="0" transform="translate(760 10)">
+          <path d="M94 301H150L144 280H101Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M122 279V255L139 237M123 255L106 238" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="123" cy="253" r="7" fill="#e4c47e"/>
+        </g>
         <g id="scene-power" class="scene-machine" opacity="0">
           <path d="M596 312H646L640 287H602Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
           <path d="M623 285L610 302H623L616 318L636 295H624Z" fill="#ffe18c" stroke="#fff4c5" stroke-width="2"/>
         </g>
+        <g id="scene-ridge-relay" class="scene-machine" opacity="0">
+          <path d="M806 230L817 221H839L850 230V249L839 258H817L806 249Z" fill="#243c4c" stroke="#77abd0" stroke-width="3"/>
+          <path d="M822 231L817 240L828 239L823 249M838 230L832 239L842 238L837 248" fill="none" stroke="#ffc783" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <g id="scene-field-relay" class="scene-machine" opacity="0">
+          <path d="M778 303L788 295H808L818 303V321L808 329H788L778 321Z" fill="#243c4c" stroke="#77abd0" stroke-width="3"/>
+          <path d="M793 304L788 313L799 312L794 322M807 303L802 312L812 311L807 321" fill="none" stroke="#ffc783" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+        <g id="scene-ridge-mine" class="scene-machine" opacity="0">
+          <path d="M878 317H934L928 297H885Z" fill="#574b37" stroke="#d3b676" stroke-width="3"/>
+          <path d="M906 295V274L923 256M907 274L890 257" fill="none" stroke="#f1d08b" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="907" cy="272" r="7" fill="#e4c47e"/>
+        </g>
+        <g id="scene-frontier-life" class="scene-machine" opacity="0">
+          <path d="M828 355V326Q858 292 888 326V355Z" fill="url(#scene-glass)" stroke="#8aa9a1" stroke-width="3"/>
+          <path d="M828 337H888M843 318V355M873 318V355" fill="none" stroke="#718e89" stroke-width="2"/>
+          <path d="M838 339H849V351H838ZM855 339H866V351H855ZM872 339H883V351H872Z" fill="#9fe5ba"/>
+        </g>
       </svg>
+      <svg id="scene-network-overlay" class="scene-network-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <g id="scene-network-wires-open"></g>
+      </svg>
+      <div class="scene-sockets" role="group" aria-label="Choose where to place the earned MINE kit">
+        <button id="scene-socket-8" class="scene-socket scene-socket-8" type="button" hidden>PLACE MINE</button>
+        <button id="scene-socket-10" class="scene-socket scene-socket-10" type="button" hidden>PLACE MINE</button>
+        <button id="scene-socket-17" class="scene-socket scene-socket-17" type="button" hidden>PLACE MINE</button>
+      </div>
+      <div id="scene-sites" class="scene-sites" role="group" aria-label="Valley construction sites"></div>
       <button id="scene-action" class="scene-action" type="button" aria-label="Repair the broken relay for 4 scrap">
         <span class="scene-action-glyph" aria-hidden="true">◇</span><span id="scene-action-label">PATCH</span>
       </button>
       <div class="scene-choice" id="scene-choice" role="group" aria-label="Choose the first expansion investment" hidden>
         <button id="scene-choice-mine" class="scene-choice-button scene-choice-mine" type="button">
-          <strong>⛏ MINE · 12</strong><small id="scene-choice-mine-detail">More scrap, tighter power.</small>
+          <strong>⛏ MINE · RIDGE · 12</strong><small id="scene-choice-mine-detail">More scrap, tighter power.</small>
         </button>
         <button id="scene-choice-power" class="scene-choice-button scene-choice-power" type="button">
-          <strong>ϟ POWER · 15</strong><small id="scene-choice-power-detail">More LIFE, steady mining.</small>
+          <strong>ϟ POWER · GREENHOUSE · 15</strong><small id="scene-choice-power-detail">More LIFE, steady mining.</small>
         </button>
       </div>
       <button id="scene-awaken" class="scene-awaken" type="button" hidden>AWAKEN REGION <span aria-hidden="true">↗</span></button>
       <button id="scene-return" class="scene-return" type="button" hidden>RETURN TO SAVE</button>
       <span id="scene-practice-label" class="scene-practice-label" hidden>Temporary practice · nothing transfers</span>
       <span id="opening-stage-live" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
+    </div>
+    <div id="scene-build-controls" class="scene-build-controls" role="group" aria-label="Build in the valley" hidden>
+      <div class="scene-build-tools" role="group" aria-label="Choose a structure">
+        <button type="button" class="scene-build-tool" data-machine="3" aria-pressed="false">MINE · 12</button>
+        <button type="button" class="scene-build-tool" data-machine="2" aria-pressed="false">RELAY · 4</button>
+        <button type="button" class="scene-build-tool" data-machine="4" aria-pressed="false">LIFE · 18</button>
+        <button type="button" class="scene-build-tool" data-machine="5" aria-pressed="false">POWER · 15</button>
+        <button type="button" class="scene-build-tool" data-machine="0" aria-pressed="false">REMOVE</button>
+        <button type="button" id="scene-more-sites" class="scene-more-sites" hidden>More connected sites</button>
+        <button type="button" id="scene-advanced-toggle" class="scene-advanced-toggle" aria-pressed="false">Advanced network</button>
+      </div>
+      <p id="scene-site-readout" class="scene-site-readout" role="status" aria-live="polite" aria-atomic="true">Choose a structure, then select a site in the valley.</p>
     </div>
   </section>
 

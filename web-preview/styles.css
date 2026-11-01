@@ -148,9 +148,29 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
   box-shadow:0 22px 70px #02081166;isolation:isolate
 }
 .opening-landscape{display:block;width:100%;height:100%}
+.scene-sockets{position:absolute;inset:0;pointer-events:none}
+.scene-socket{
+  position:absolute;z-index:7;display:flex;align-items:center;justify-content:center;
+  width:86px;min-height:46px;padding:5px 7px;border:1px solid #b8f5d7;border-radius:999px;
+  background:rgba(12,35,41,.92);box-shadow:0 0 0 4px rgba(131,242,219,.14),0 5px 16px #071019a8;
+  color:#d8ffed;font-size:8px;font-weight:900;letter-spacing:.035em;line-height:1.1;
+  transform:translate(-50%,-50%);pointer-events:auto
+}
+.scene-socket[hidden]{display:none!important}
+.scene-socket:hover{filter:brightness(1.18);transform:translate(-50%,-53%) scale(1.03)}
+.scene-socket:active{transform:translate(-50%,-50%) scale(.96)}
+.scene-socket:focus-visible{outline:3px solid #fff3bf;outline-offset:3px}
+.scene-socket.socket-occupied{border-color:#edbc80;color:#ffe3b2;background:rgba(62,47,34,.95)}
+.scene-socket.socket-dark{border-color:#df9b78;color:#ffd1b7;background:rgba(62,39,35,.94)}
+.scene-socket-8{left:51%;top:76%}
+.scene-socket-10{left:93%;top:76%}.scene-socket-17{left:76%;top:76%}
 .scene-cable-base{fill:none;stroke:#596d6d;stroke-width:12;stroke-linecap:round}
 .scene-cable-dead{fill:none;stroke:#d68f62;stroke-width:5;stroke-linecap:round;stroke-dasharray:12 9}
 .scene-cable-live{fill:none;stroke:#87dfbd;stroke-width:5;stroke-linecap:round;opacity:0;transition:opacity .2s}
+.scene-network-wire{fill:none;stroke-width:5;stroke-linecap:round;pointer-events:none}
+.scene-network-wire-live{stroke:#9dfde2;filter:drop-shadow(0 0 4px #70e3c988)}
+.scene-network-wire-dead{stroke:#d68f62;stroke-dasharray:9 8;opacity:.8}
+.scene-network-preview{fill:none;stroke:#ffe2a0;stroke-width:5;stroke-linecap:round;stroke-dasharray:10 10;opacity:0;pointer-events:none}
 .scene-flow{fill:none;stroke:#c9ffe9;stroke-width:8;stroke-linecap:round;stroke-dasharray:.055 .945;stroke-dashoffset:1;opacity:0}
 .scene-pulse .scene-flow{opacity:.95;animation:scene-current 950ms cubic-bezier(.2,.7,.25,1) both}
 .scene-spark{opacity:.95;animation:spark 1.2s ease-in-out infinite alternate}
@@ -179,6 +199,9 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
 .scene-action[data-action="mine-kit"]{left:77.8%;top:74%}
 .scene-action[data-action="expansion"]{left:35%;top:74%}
 .scene-action[data-action="power"]{left:63%;top:72%}
+.scene-action[data-action="ridge-link"]{left:84%;top:55%}
+.scene-action[data-action="field-link"]{left:83%;top:77%}
+.scene-action[data-action="frontier-life"]{left:88%;top:75%}
 .scene-choice[hidden]{display:none!important}
 .scene-choice-button{
   position:absolute;z-index:6;top:86%;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;
@@ -221,11 +244,41 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
   clip:rect(0,0,0,0);white-space:nowrap;border:0
 }
 .campaign-opening footer{display:none}
+.campaign-opening.campaign-valley .world-section{display:block;min-height:0;margin:8px 0 10px}
+.campaign-opening.campaign-valley .world-intro{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:0 3px 7px
+}
+.campaign-opening.campaign-valley #world-title,
+.campaign-opening.campaign-valley .intro-copy{display:none}
+.campaign-opening.campaign-valley .mission-banner{
+  display:grid!important;grid-template-columns:42px minmax(0,1fr);gap:7px;
+  margin:8px 0 10px;padding:9px 11px;border-radius:12px
+}
+.campaign-opening.campaign-valley .mission-number span,
+.campaign-opening.campaign-valley .mission-progress{display:none}
+.campaign-opening.campaign-valley .mission-number strong{font-size:20px}
+.campaign-opening.campaign-valley .mission-copy h2{margin:0 0 3px;font-size:15px}
+.campaign-opening.campaign-valley .mission-copy p{margin:0;font-size:11px;line-height:1.4}
+.campaign-opening.campaign-valley #campaign-action,
+.campaign-opening.campaign-valley #campaign-wallet{display:none!important}
+.campaign-opening.campaign-valley .opening-world{min-height:0;aspect-ratio:960/420;max-height:430px;border-radius:18px}
+.campaign-valley:not(.campaign-opening) .world-section{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:0;min-height:0;margin:8px 0 14px
+}
+.campaign-valley:not(.campaign-opening) .planet-scene{display:none}
+.campaign-valley:not(.campaign-opening) .world-intro{padding:0 4px 9px}
+.campaign-valley:not(.campaign-opening) .opening-world{
+  display:block;position:relative;width:100%;aspect-ratio:960/420;min-height:230px;
+  max-height:430px;overflow:hidden;border:1px solid #405b60;border-radius:19px;
+  background:linear-gradient(180deg,#142f42,#283f47 62%,#1a3037);box-shadow:0 18px 55px #02081166
+}
 .guide-steps[hidden]{display:none}
 @keyframes scene-current{0%{stroke-dashoffset:1;opacity:.2}15%{opacity:1}100%{stroke-dashoffset:0;opacity:0}}
 @keyframes spark{from{opacity:.42}to{opacity:1}}
 @keyframes salvage-tick{from{opacity:.25}to{opacity:1}}
 @media(max-width:650px){
+  .campaign-valley:not(.campaign-opening) .world-intro{padding:0 2px 7px}
+  .campaign-valley:not(.campaign-opening) .opening-world{min-height:190px;border-radius:15px}
   .campaign-opening .world-section{display:block;margin:12px 0 18px}
   .campaign-opening .world-intro{padding:0 2px 10px;column-gap:8px}
   .campaign-opening #world-title{font-size:clamp(21px,6vw,26px)}
@@ -235,12 +288,17 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
   .campaign-opening .opening-world{aspect-ratio:1.43;min-height:208px;max-height:330px;border-radius:18px}
   .campaign-opening .opening-world.investment-choice{min-height:246px}
   .campaign-opening .scene-action{min-width:86px;min-height:48px;padding:7px 8px;font-size:9px}
+  .scene-socket{width:66px;min-height:44px;padding:4px 4px;font-size:7px}
+  .scene-socket-8{left:46%}.scene-socket-17{left:70%}.scene-socket-10{left:90%}
   .campaign-opening .scene-action[data-action="repair"]{left:45.7%;top:64%}
   .campaign-opening .scene-action[data-action="mine-kit"]{left:77%;top:74%}
   .campaign-opening .scene-action[data-action="expansion"]{left:35%;top:74%}
   .campaign-opening .scene-action[data-action="power"]{left:65%;top:74%}
-  .campaign-opening .scene-choice-button{top:78%;width:44%;min-height:64px;padding:6px 7px;gap:3px}
-  .campaign-opening .scene-choice-mine{left:28%}.campaign-opening .scene-choice-power{left:72%}
+  .campaign-opening .scene-action[data-action="ridge-link"]{left:84%;top:55%}
+  .campaign-opening .scene-action[data-action="field-link"]{left:83%;top:77%}
+  .campaign-opening .scene-action[data-action="frontier-life"]{left:88%;top:75%}
+  .campaign-opening .scene-choice-button{top:78%;width:42%;min-height:64px;padding:6px 7px;gap:3px}
+  .campaign-opening .scene-choice-mine{left:25%}.campaign-opening .scene-choice-power{left:75%}
   .campaign-opening .scene-choice-button strong{font-size:8px}
   .campaign-opening .scene-choice-button small{font-size:8px;line-height:1.2}
   .campaign-opening .scene-awaken{min-width:136px;min-height:46px;top:17%;font-size:9px}
@@ -253,6 +311,7 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
   .campaign-opening .world-intro{padding-bottom:7px}
   .campaign-opening .opening-world{aspect-ratio:1.5;min-height:190px;border-radius:15px}
   .campaign-opening .scene-action{min-width:78px;min-height:46px;font-size:8px}
+  .scene-socket{width:56px;min-height:44px;font-size:6px}
 }
 @media(prefers-reduced-motion:reduce){
   .opening-world *, .opening-world *:before, .opening-world *:after{
@@ -261,3 +320,57 @@ footer{max-width:1360px;margin:auto;display:flex;align-items:center;justify-cont
   .is-powered .scene-cable-live{opacity:.9}
   .scene-pulse .scene-flow{stroke-dasharray:none;stroke:#c9ffe9;opacity:.7}
 }
+
+/* Once the first frontier is reached, keep the valley as the working view.
+   The full network remains available on demand but never replaces the scene. */
+.scene-build-controls{margin:9px 0 0;padding:9px 10px;border:1px solid rgba(120,214,195,.22);border-radius:12px;background:rgba(14,34,45,.8)}
+.scene-build-controls[hidden]{display:none!important}
+.scene-build-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.scene-build-tool,.scene-more-sites,.scene-advanced-toggle{min-height:44px;padding:7px 10px;border:1px solid #315267;border-radius:9px;background:#142b3e;color:#d4e7ee;font-size:10px;font-weight:800}
+.scene-more-sites[hidden]{display:none!important}
+.scene-more-sites{border-color:rgba(145,190,207,.28);color:#b8d5dc;background:#102232}
+.scene-build-tool[aria-pressed="true"]{border-color:#94ffe0;background:#24605a;color:#e5fff7;box-shadow:0 0 10px #49dca717}
+.scene-advanced-toggle{margin-left:auto;border-color:rgba(145,190,207,.28);color:#b8d5dc;background:#102232}
+.scene-build-tool:focus-visible,.scene-more-sites:focus-visible,.scene-advanced-toggle:focus-visible{outline:3px solid #fff3bf;outline-offset:2px}
+.scene-site{position:absolute;z-index:8;display:flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:1px solid rgba(196,232,216,.84);border-radius:50%;transform:translate(-50%,-50%);background:rgba(13,33,42,.92);color:#e8f7e9;font-size:17px;font-weight:900;box-shadow:0 2px 9px #07101988}
+.scene-site[hidden]{display:none!important}
+.scene-site-empty{border-style:dashed;color:#b9f6dd;background:rgba(13,33,42,.78)}
+.scene-site-built[data-machine="1"]{border-color:#ffe29a;color:#ffe29a}
+.scene-site-built[data-machine="2"]{border-color:#97c9e9;color:#a8d8f4}
+.scene-site-built[data-machine="3"]{border-color:#edcb85;color:#ffdfa0}
+.scene-site-built[data-machine="4"]{border-color:#9cf0c3;color:#b9f6d2}
+.scene-site-built[data-machine="5"]{border-color:#ffe18c;color:#ffe18c}
+.scene-site-offline{border-style:dashed;filter:grayscale(.7);opacity:.76}
+.scene-site:disabled{cursor:default}
+.scene-site:focus-visible{outline:3px solid #fff3bf;outline-offset:3px}
+.scene-site-readout{margin:7px 2px 0;color:#c5d8d7;font-size:11px;line-height:1.45;overflow-wrap:anywhere}
+.scene-site-readout:empty{display:none}
+.scene-network-overlay{display:none;position:absolute;inset:0;z-index:6;width:100%;height:100%;pointer-events:none}
+.valley-open .scene-network-overlay{display:block}
+.valley-open #scene-network-wires{display:none}
+.valley-open .scene-machine{opacity:0!important}
+.valley-open .scene-sites{position:absolute;inset:0;pointer-events:none}
+.valley-open .scene-site{pointer-events:auto}
+.valley-open .scene-cable-base,.valley-open .scene-cable-dead,
+.valley-open .scene-cable-live,.valley-open .scene-flow{opacity:0!important}
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .mission-banner,
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .sidebar{display:none!important}
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .network-card>.section-heading,
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .network-card>.mobile-feedback,
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .network-card>.quick-tools,
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .network-card>.machine-readout,
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .network-card>.board-wrap,
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .network-card>.board-foot{display:none!important}
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .workshop{display:block}
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .network-card{padding:0;border:0;background:transparent;box-shadow:none}
+.campaign-valley:not(.campaign-opening):not(.valley-advanced-open) .board-recovery{margin-top:8px}
+.campaign-valley:not(.campaign-opening).valley-advanced-open .mission-banner{display:none!important}
+@media(max-width:650px){
+  .campaign-valley:not(.campaign-opening) .opening-world{min-height:300px;aspect-ratio:auto}
+  .scene-build-controls{padding:8px}
+  .scene-build-tools{gap:5px}
+  .scene-build-tool,.scene-more-sites,.scene-advanced-toggle{min-height:44px;padding:6px 8px;font-size:9px}
+  .scene-advanced-toggle{margin-left:0}
+  .scene-site{width:42px;height:42px;font-size:16px}
+}
+@media(prefers-reduced-motion:reduce){.scene-site,.scene-build-tool,.scene-more-sites,.scene-advanced-toggle{transition:none!important;animation:none!important}}

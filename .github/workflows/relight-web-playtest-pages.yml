@@ -72,13 +72,23 @@ jobs:
         with:
           name: relight-web-playtest-screenshots
           path: |
-            relight-mobile-playtest.png
-            relight-mobile-onboarding.png
-            relight-narrow-320-playtest.png
-            relight-mobile-awakening-ready.png
-            relight-mobile-awakened.png
-            relight-desktop-playtest.png
-          if-no-files-found: ignore
+            relight-firstlight-390-v3-opening-viewport.png
+            relight-firstlight-390-v3-opening-full.png
+            relight-firstlight-1440-v3-opening-viewport.png
+            relight-firstlight-1440-v3-opening-full.png
+            relight-firstlight-390-v3-investment-choice.png
+            relight-firstlight-390-v3-priority-installed.png
+            relight-firstlight-390-v3-field-link.png
+            relight-firstlight-390-v3-ready-mine.png
+            relight-firstlight-desktop-v3-investment-choice.png
+            relight-firstlight-desktop-v3-priority-installed.png
+            relight-firstlight-desktop-v3-field-link.png
+            relight-firstlight-desktop-v3-ready-power.png
+            relight-firstlight-390-v3-open-valley.png
+            relight-firstlight-320-v3-open-valley-default.png
+            relight-firstlight-320-v3-open-valley.png
+            relight-firstlight-desktop-v3-power-priority.png
+          if-no-files-found: error
 
   deploy:
     # GitHub Pages is outside this release scope; the authorized preview is

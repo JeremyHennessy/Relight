@@ -3,7 +3,7 @@
 // reconstructed or claimed to be identical.
 import assert from "node:assert/strict";
 import {chromium} from "playwright";
-import {fresh,freshCampaign,Machine,MAX_OFFLINE,MINING_OFFLINE,advance,rates,claim,TARGET,estimateRecoverySeconds} from "./model.mjs";
+import {fresh,freshCampaign,freshVersionTwoCampaign,Machine,MAX_OFFLINE,MINING_OFFLINE,advance,rates,claim,TARGET,estimateRecoverySeconds,valid,repairGreenhouse,place,isReady} from "./model.mjs";
 
 const origin=process.env.RELIGHT_BROWSER_URL||"http://127.0.0.1:8765";
 const saveKey="relight.webplaytest.v1";
@@ -170,15 +170,21 @@ async function buildGuidedNetwork(page){
     const isolatedPractice=await page.locator("#scene-return").isVisible();
     await clickSceneAction(page);
     await runAutosaveTicks(page,48);
-    if(isolatedPractice){
-      assert.match(await page.locator("#scene-action").textContent(),/INSTALL MINE/,
-        "practice restoration earns the starter kit in its isolated in-memory world");
-    }else{
-      assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1")))).campaign.phase,"mine-kit",
-        "restoration earns and saves the starter kit");
-    }
-    await clickSceneAction(page);
-    await runAutosaveTicks(page,600);
+    assert.equal(await page.locator("#opening-world").getAttribute("data-phase"),"mine-kit",
+      isolatedPractice?"practice restoration earns the kit in its isolated world":"restoration earns and saves the starter kit");
+    await page.locator("#scene-socket-8").click();
+    assert.equal(await page.locator("#opening-world").getAttribute("data-phase"),"ridge-link");
+    await runAutosaveTicks(page,32);
+    await page.locator("#scene-action").click();
+    for(let elapsed=0;elapsed<800&&(await page.locator("#opening-world").getAttribute("data-phase"))!=="investment-choice";elapsed+=8)
+      await runAutosaveTicks(page,8);
+    assert.equal(await page.locator("#opening-world").getAttribute("data-phase"),"investment-choice","the first route is earned during first-region restoration");
+    await page.locator("#scene-choice-mine").click();
+    for(let elapsed=0;elapsed<1000&&(await page.locator("#opening-world").getAttribute("data-phase"))!=="field-link";elapsed+=8)
+      await runAutosaveTicks(page,8);
+    assert.equal(await page.locator("#opening-world").getAttribute("data-phase"),"field-link");
+    await page.locator("#scene-action").click();
+    await runAutosaveTicks(page,1200);
     await page.locator("#scene-awaken").waitFor({state:"visible"});
     return;
   }
@@ -192,6 +198,19 @@ async function buildGuidedNetwork(page){
 }
 async function unlockCampaignPower(page){
   if(!await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")))return;
+  const version=await page.evaluate(()=>JSON.parse(localStorage.getItem("relight.webplaytest.v1"))?.campaign?.version);
+  const phase=await page.locator("#opening-world").getAttribute("data-phase");
+  if(version===3||phase==="frontier-life"&&await page.locator("#scene-return").isVisible()){
+    assert.equal(phase,"frontier-life","the first claim reveals one frontier build, not the whole grid");
+    assert.equal(await page.locator(".tile:visible").count(),0);
+    await page.locator("#scene-action").click();
+    assert.equal(await page.locator("#opening-world").getAttribute("data-phase"),"open",
+      "the persistent valley remains active after starting the frontier LIFE site");
+    assert.equal(await page.locator("#opening-world").isVisible(),true);
+    assert.equal(await page.locator(".tile:visible").count(),0,"the scene remains the default even after the frontier starts");
+    assert.equal(await page.locator(".sidebar").isVisible(),false);
+    return;
+  }
   assert.equal(await page.locator("#scene-choice-mine").isVisible(),true);
   await page.locator("#scene-choice-mine").click();
   assert.match(await page.locator("#world-copy").textContent(),/25 points/);
@@ -264,13 +283,13 @@ try{
   }
 
   await check("invalid v2 anchor and pre-choice records remain byte-protected through reload and lifecycle",async()=>{
-    const brokenNetwork=freshCampaign();
+    const brokenNetwork=freshVersionTwoCampaign();
     brokenNetwork.cells[13]=Machine.Relay;brokenNetwork.cells[14]=Machine.Relay;
     brokenNetwork.cells[17]=Machine.Extractor;brokenNetwork.cells[7]=Machine.Extractor;
     brokenNetwork.region=1;brokenNetwork.restoration=12;brokenNetwork.scrap=48;
     brokenNetwork.campaign={version:2,phase:"investment-growth",mineKit:"redeemed",firstInvestment:"mine"};
     brokenNetwork.savedAt=Math.floor(Date.now()/1000);
-    const badPreChoice=freshCampaign();
+    const badPreChoice=freshVersionTwoCampaign();
     badPreChoice.cells[13]=Machine.Relay;badPreChoice.cells[17]=Machine.Extractor;
     badPreChoice.region=0;badPreChoice.restoration=40;badPreChoice.scrap=48;
     badPreChoice.campaign={version:2,phase:"first-region",mineKit:"redeemed",firstInvestment:"power"};
@@ -580,7 +599,7 @@ try{
   }));
 
   await check("unknown future campaign versions remain byte-protected",()=>{
-    const future=freshCampaign();future.campaign.version=3;
+    const future=freshCampaign();future.campaign.version=99;
     const original=JSON.stringify(future);
     return withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
       assert.equal(await raw(page),original,"startup does not normalize an unknown future campaign");
@@ -591,86 +610,245 @@ try{
     });
   });
 
-  await check("first light is a scene-first saved campaign with earned MINE and contextual POWER",()=>withPage({
+  await check("v3 actual connection, early priority, field relay and first frontier stay in the valley",()=>withPage({
     width:320,height:640,initial:{}
   },async page=>{
-    assert.equal(await page.locator("#welcome").evaluate(el=>el.open),false,"fresh opening begins in play, not a lesson modal");
-    assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),true);
-    assert.match(await page.locator("#world-title").textContent(),/First Light/);
-    assert.equal(await page.locator("#opening-world").isVisible(),true,"opening is a shared field scene");
-    assert.equal(await page.locator(".tile:visible").count(),0,"generic grid is hidden during the opening");
+    assert.equal(await page.locator("#welcome").evaluate(el=>el.open),false,"fresh play starts directly in the valley");
+    assert.equal(await page.locator("#opening-world").isVisible(),true);
+    assert.equal(await page.locator(".tile:visible").count(),0);
     assert.equal(await page.locator(".sidebar").isVisible(),false);
-    assert.equal(await page.locator(".resource:visible").count(),1,"only scrap remains in the opening HUD");
+    assert.equal(await page.locator(".resource:visible").count(),1);
     for(const id of ["#scene-reactor","#scene-relay","#scene-greenhouse","#scene-action"]){
-      const rect=await page.locator(id).boundingBox();assert.ok(rect&&rect.y>=0&&rect.y+rect.height<=640,`${id} fits the opening viewport`);
+      const rect=await page.locator(id).boundingBox();assert.ok(rect&&rect.y>=0&&rect.y+rect.height<=640,`${id} is visible at320×640`);
     }
-    assert.match(await page.locator("#scene-action").getAttribute("aria-label"),/broken relay/i);
-    let saved=JSON.parse(await raw(page));
-    assert.equal(saved.campaign.phase,"repair");assert.equal(saved.scrap,10);
-    await page.locator("#scene-action").click();
-    saved=JSON.parse(await raw(page));
+    let saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"repair");assert.equal(saved.scrap,10);assert.ok(valid(saved));
+    await page.locator("#scene-action").click();saved=JSON.parse(await raw(page));
     assert.equal(saved.campaign.phase,"restore");assert.equal(saved.cells[13],Machine.Relay);assert.equal(saved.scrap,6);
-    assert.equal(await page.locator("#opening-world").getAttribute("data-powered"),"true");
     await page.reload({waitUntil:"networkidle"});
-    assert.match(await page.locator("#world-title").textContent(),/Power returns/i,
-      "the repaired connection resumes from the saved campaign state");
-    assert.equal(await page.locator("#opening-world").getAttribute("data-powered"),"true");
-    await runAutosaveTicks(page,48);
-    saved=JSON.parse(await raw(page));
-    assert.equal(saved.campaign.phase,"mine-kit","actual simulated restoration earns the one-time kit");
-    assert.ok(saved.scrap<1,"the kit can be earned after ordinary scrap runs out");
-    await page.reload({waitUntil:"networkidle"});
-    assert.equal(JSON.parse(await raw(page)).campaign.mineKit,"earned","earned-kit milestone survives reload");
-    assert.match(await page.locator("#scene-action").textContent(),/INSTALL MINE/);
-    const scrapBeforeKit=JSON.parse(await raw(page)).scrap;
-    await page.locator("#scene-action").click();
-    saved=JSON.parse(await raw(page));
-    assert.equal(saved.cells[17],Machine.Extractor);
-    assert.equal(saved.scrap,scrapBeforeKit,"redeeming the kit does not spend ordinary scrap");
-    assert.equal(saved.campaign.phase,"first-region");
-    assert.equal(await page.locator("#scene-awaken").isVisible(),false,"early region claim stays unavailable");
-    await runAutosaveTicks(page,600);
-    await page.locator("#scene-awaken").waitFor({state:"visible"});
-    await page.locator("#scene-awaken").focus();await page.keyboard.press("Enter");
-    saved=JSON.parse(await raw(page));
-    assert.equal(saved.region,1);assert.equal(saved.campaign.phase,"investment-choice");
-    assert.equal(await page.evaluate(()=>document.activeElement.id),"world-title","keyboard claim focuses the choice stage heading");
+    assert.equal(await page.locator("#opening-world").getAttribute("data-powered"),"true","repair produces a live cable after reload");
+    await runAutosaveTicks(page,48);saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"mine-kit");assert.equal(saved.campaign.mineKit,"earned");
+    await page.locator("#scene-socket-10").click();saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"mine-disconnected");assert.equal(rates(saved).mined,0);
+    assert.match(await page.locator("#mission-title").textContent(),/no power path/i);
+    const scrapBeforeKit=Number(await page.locator("#scrap").textContent().then(text=>text.match(/[\d.]+/)?.[0]||0));
+    await page.locator("#scene-socket-8").click();saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"ridge-link");assert.equal(saved.cells[8],Machine.Extractor);
+    assert.equal(saved.scrap,scrapBeforeKit,"the earned kit never costs scrap, even after long idle depleted the reserve");
+    assert.equal(await page.locator(".tile:visible").count(),0,"socket work remains in the scene");
+    await runAutosaveTicks(page,80);assert.ok(JSON.parse(await raw(page)).scrap>=4,
+      "twenty simulated gameplay seconds fund the ridge relay after an idle-exhausted reserve");
+    await page.locator("#scene-action").click();saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"first-region");assert.equal(saved.cells[18],Machine.Relay);
+    assert.match(await page.locator('.scene-network-wire[data-from="13"][data-to="18"]').getAttribute("class"),/wire-live/);
+    assert.equal(await page.locator(".tile:visible").count(),0,"the grid remains sealed after the connection");
+    for(let ticks=0;ticks<800&&(await page.locator("#opening-world").getAttribute("data-phase"))!=="investment-choice";ticks+=16)
+      await runAutosaveTicks(page,16);
+    assert.equal(await page.locator("#opening-world").getAttribute("data-phase"),"investment-choice",
+      "the first route becomes actionable from actual restoration and scrap");
+    await pagehide(page);
+    saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"investment-choice",
+      `pagehide persists the earned milestone: restore=${saved.restoration}, scrap=${saved.scrap}, mine=${rates(saved).mined}, used=${rates(saved).used}`);
+    assert.ok(saved.restoration>=25&&saved.scrap>=15,"the priority decision arrives during first restoration");
+    assert.match(await page.locator("#scene-choice-mine-detail").textContent(),/1\.67 gross\/s.*\+1\.20 net\/s.*0\.47\/s at 67% power/);
+    assert.match(await page.locator("#scene-choice-power-detail").textContent(),/1\.25 gross\/s.*\+0\.55 net\/s.*0\.84\/s at 100% power/);
+    const mineBox=await page.locator("#scene-choice-mine").boundingBox(),powerBox=await page.locator("#scene-choice-power").boundingBox();
+    assert.ok(mineBox.height>=44&&powerBox.height>=44);
+    assert.ok(mineBox.x+mineBox.width<=powerBox.x||powerBox.x+powerBox.width<=mineBox.x,"route targets do not overlap");
+    await page.locator("#scene-choice-mine").click();saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"first-region");assert.equal(saved.campaign.firstInvestment,"mine");
+    assert.equal(await page.locator(".sidebar").isVisible(),false,"the route does not expose the dashboard");
+    for(let ticks=0;ticks<1200&&(await page.locator("#opening-world").getAttribute("data-phase"))!=="field-link";ticks+=16)
+      await runAutosaveTicks(page,16);
+    saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"field-link");assert.ok(saved.restoration>=50&&saved.scrap>=4);
+    await page.locator("#scene-action").click();saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"first-region");assert.equal(saved.cells[19],Machine.Relay);
+    assert.match(await page.locator('.scene-network-wire[data-from="14"][data-to="19"]').getAttribute("class"),/wire-live/);
+    await runAutosaveTicks(page,480);
+    assert.equal(await page.locator("#scene-awaken").isVisible(),true);
+    const before=Number(await page.locator("#opening-world").getAttribute("data-growth"));assert.ok(before>=.99);
+    const planetBeforeClaim=await page.locator("#planet").evaluate(el=>el.toDataURL());
+    await page.locator("#scene-awaken").focus();await page.keyboard.press("Enter");saved=JSON.parse(await raw(page));
+    assert.equal(saved.region,1);assert.equal(saved.campaign.phase,"frontier-life");
+    assert.equal(await page.evaluate(()=>document.activeElement.id),"scene-action","keyboard claim focuses the newly actionable frontier");
+    assert.equal(await page.locator(".tile:visible").count(),0,"the first claim does not open the full grid");
+    const after=Number(await page.locator("#opening-world").getAttribute("data-growth"));assert.ok(after>=.99,"restoration remains visible after claim");
+    assert.equal(await page.locator("#planet").evaluate(el=>el.toDataURL()),planetBeforeClaim,
+      "the rendered restoration canvas remains pixel-identical across the first claim");
     await page.locator("#scene-awaken").evaluate(el=>el.dispatchEvent(new MouseEvent("click",{bubbles:true})));
-    assert.equal(JSON.parse(await raw(page)).region,1,"a repeated claim cannot duplicate the reward");
+    assert.equal(JSON.parse(await raw(page)).region,1,"duplicate claim cannot duplicate reward");
     await page.reload({waitUntil:"networkidle"});
-    assert.equal(JSON.parse(await raw(page)).campaign.phase,"investment-choice","the first claim and both world options survive reload");
-    assert.equal(await page.locator("#scene-choice-mine").isVisible(),true);
-    assert.equal(await page.locator("#scene-choice-power").isVisible(),true);
-    assert.match(await page.locator("#scene-choice-mine-detail").textContent(),/gross\/s.*net\/s.*LIFE/i);
-    assert.match(await page.locator("#scene-choice-power-detail").textContent(),/gross\/s.*net\/s.*LIFE/i);
-    const originalChoice=await raw(page);
-    assert.equal(JSON.parse(originalChoice).campaign.phase,"investment-choice");
-    await page.locator("#scene-choice-mine").click();
-    saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"investment-growth");
-    assert.equal(saved.campaign.firstInvestment,"mine");assert.equal(saved.cells[7],Machine.Extractor);
-    await page.locator("#scene-choice-mine").evaluate(el=>el.dispatchEvent(new MouseEvent("click",{bubbles:true})));
-    assert.equal(JSON.parse(await raw(page)).scrap,saved.scrap,"repeated selection cannot spend twice");
-    await page.reload({waitUntil:"networkidle"});
-    assert.equal(JSON.parse(await raw(page)).campaign.phase,"investment-growth","first choice survives reload");
-    assert.equal(await page.locator("#scene-action").isVisible(),false,"the second site remains locked before recovery 25");
-    saved=JSON.parse(await raw(page));saved.restoration=25;saved.campaign.phase="investment-second";
-    await page.evaluate(value=>window.__relightTest.setRaw("relight.webplaytest.v1",value),JSON.stringify(saved));
-    await page.reload({waitUntil:"networkidle"});
-    assert.equal(await page.locator("#scene-action").isVisible(),true,"the model-earned threshold reveals the other site");
-    assert.equal(await page.locator("#opening-world").getAttribute("data-growth"),"1.000");
-    await clickSceneAction(page);
-    saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"open");
-    assert.equal(await page.locator("body").evaluate(el=>el.classList.contains("campaign-opening")),false);
-    assert.equal(await page.locator(".tile:visible").count(),25,"full grid appears after actual POWER placement");
+    assert.equal(JSON.parse(await raw(page)).campaign.phase,"frontier-life","frontier objective survives reload");
+    assert.equal(await page.locator(".sidebar").isVisible(),false);
+    await page.locator("#scene-action").click();saved=JSON.parse(await raw(page));
+    assert.equal(saved.campaign.phase,"open");assert.equal(saved.cells[24],Machine.Restorer);assert.ok(valid(saved));
+    assert.equal(await page.locator(".tile:visible").count(),0,"the scene remains the default construction surface after frontier LIFE");
+    assert.equal(await page.locator(".sidebar").isVisible(),false);
+    assert.equal(await page.locator("#scene-build-controls").isVisible(),true);
+    assert.equal(await page.locator("#scene-network-wires").isVisible(),false,
+      "the original opening wires are hidden on the direct transition into the open-valley overlay");
+    for(const [from,to] of [[12,13],[13,14]]){
+      const edge=page.locator(`#scene-network-wires-open .scene-network-wire[data-from="${from}"][data-to="${to}"]`);
+      assert.equal(await edge.count(),1,`open-valley network renders edge ${from}→${to}`);
+      const geometry=await page.evaluate(({from,to})=>{
+        const svg=document.querySelector("#scene-network-overlay"),matrix=svg.getScreenCTM();
+        const point=index=>{
+          const r=document.querySelector(`#scene-sites [data-index="${index}"]`).getBoundingClientRect();
+          return [r.left+r.width/2,r.top+r.height/2];
+        };
+        const d=document.querySelector(`#scene-network-wires-open .scene-network-wire[data-from="${from}"][data-to="${to}"]`).getAttribute("d");
+        const values=d.match(/-?\d+(?:\.\d+)?/g).map(Number);
+        const actual=[[values[0],values[1]],[values[4],values[5]]].map(([x,y])=>{
+          const p=new DOMPoint(x,y).matrixTransform(matrix);return [p.x,p.y];
+        });
+        return {actual,expected:[point(from),point(to)]};
+      },{from,to});
+      for(let endpoint=0;endpoint<2;endpoint++)for(let axis=0;axis<2;axis++)
+        assert.ok(Math.abs(geometry.actual[endpoint][axis]-geometry.expected[endpoint][axis])<1,
+          `edge ${from}→${to} uses the same open-valley site geometry`);
+    }
+    await page.locator('.scene-build-tool[data-machine="3"]').click();
+    const openSites=await page.locator("#scene-sites .scene-site:visible").evaluateAll(nodes=>nodes.map(node=>{
+      const r=node.getBoundingClientRect();return {index:node.dataset.index,left:r.left,right:r.right,top:r.top,bottom:r.bottom};
+    }));
+    for(let i=0;i<openSites.length;i++)for(let j=i+1;j<openSites.length;j++)
+      assert.ok(openSites[i].right<=openSites[j].left||openSites[j].right<=openSites[i].left||
+        openSites[i].bottom<=openSites[j].top||openSites[j].bottom<=openSites[i].top,
+        `open-valley touch targets ${openSites[i].index} and ${openSites[j].index} do not overlap`);
+    const focusedSite=page.locator('#scene-sites [data-index="17"]');
+    await focusedSite.focus();
+    await runAutosaveTicks(page,8);
+    assert.equal(await page.evaluate(()=>document.activeElement?.dataset.index),"17",
+      "focused site identity survives repeated render ticks");
+    await page.keyboard.press("Enter");
+    saved=JSON.parse(await raw(page));assert.equal(saved.cells[17],Machine.Extractor,"the persistent scene places a real connected model MINE at the selected site");
+    assert.equal(await page.evaluate(()=>document.activeElement?.dataset.index),"17",
+      "keyboard activation keeps focus on the same scene site node");
+    assert.equal(await page.locator('#scene-sites [data-index="17"]').getAttribute("data-machine"),String(Machine.Extractor));
+    await page.locator('.scene-build-tool[data-machine="2"]').click();
+    assert.equal(await page.locator('.scene-build-tool[data-machine="2"]').getAttribute("aria-pressed"),"true","RELAY is active before pointer placement");
+    const heldSite=page.locator("#scene-sites .scene-site-empty:visible").first();
+    const heldIndex=await heldSite.getAttribute("data-index"),heldBox=await heldSite.boundingBox();
+    assert.ok(heldBox);
+    await heldSite.evaluate(el=>{el.dataset.pointerRegression="held";});
+    await page.evaluate(()=>{
+      window.__scenePointerEvents=[];
+      for(const type of ["pointerdown","pointerup","click"])document.addEventListener(type,event=>{
+        const site=event.target.closest?.(".scene-site");
+        if(site)window.__scenePointerEvents.push([type,site.dataset.index]);
+      },true);
+    });
+    await page.mouse.move(heldBox.x+heldBox.width/2,heldBox.y+heldBox.height/2);
+    await page.mouse.down();
+    await runAutosaveTicks(page,2);
+    assert.equal(await page.locator(`#scene-sites [data-index="${heldIndex}"]`).getAttribute("data-pointer-regression"),"held",
+      "the original pointer target remains the same DOM node across ticks");
+    await page.mouse.up();
+    assert.deepEqual(await page.evaluate(()=>window.__scenePointerEvents),[
+      ["pointerdown",heldIndex],["pointerup",heldIndex],["click",heldIndex]
+    ],"pointer press, release and click remain on the original site after render ticks");
+    saved=JSON.parse(await raw(page));assert.equal(saved.cells[Number(heldIndex)],Machine.Relay,
+      "pointerup after an intervening render still performs the selected build");
+    await page.locator('.scene-build-tool[data-machine="0"]').click();
+    await page.locator('.scene-build-tool[data-machine="0"]').click();
+    const beforeInspect=await raw(page);
+    await page.locator('#scene-sites [data-index="17"]').click();
+    assert.equal(await raw(page),beforeInspect,"REMOVe selected but toggled off makes built-site taps inspection-only");
+    assert.match(await page.locator("#scene-site-readout").textContent(),/Site 18 · MINE/);
+    await page.locator('.scene-build-tool[data-machine="2"]').click();
+    await page.locator('.scene-build-tool[data-machine="0"]').click();
+    await page.locator('.scene-build-tool[data-machine="0"]').click();
+    assert.equal(await page.locator("#scene-sites .scene-site-empty:visible").count(),0,"closing build-site selection clears the placement overlay");
+    await page.locator("#scene-advanced-toggle").click();
+    assert.equal(await page.locator(".tile:visible").count(),25,"advanced network view remains explicitly available");
     assert.equal(await page.locator(".sidebar").isVisible(),true);
+    await page.locator("#scene-advanced-toggle").click();
+    assert.equal(await page.locator(".tile:visible").count(),0,"returning to the scene never changes the world");
+    assert.equal(await page.locator(".sidebar").isVisible(),false);
+    await page.reload({waitUntil:"networkidle"});assert.equal(JSON.parse(await raw(page)).campaign.phase,"open");
+    assert.equal(JSON.parse(await raw(page)).cells[17],Machine.Extractor,"scene construction survives reload");
+    assert.equal(await page.locator(".tile:visible").count(),0,"reload restores the scene as the default view");
+    saved=JSON.parse(await raw(page));saved.restoration=TARGET(saved.region);
+    await page.evaluate(({key,value})=>window.__relightTest.setRaw(key,JSON.stringify(value)),{key:saveKey,value:saved});
     await page.reload({waitUntil:"networkidle"});
-    assert.equal(JSON.parse(await raw(page)).campaign.phase,"open","POWER unlock persists after reload");
-    assert.equal(await page.locator(".sidebar").isVisible(),true);
+    assert.equal(await page.locator("#scene-awaken").isVisible(),true,"the ongoing valley offers its next region claim in-scene");
+    assert.equal(await page.locator("#revive").isVisible(),false,"advanced view does not duplicate the scene claim action");
+    await page.locator("#scene-awaken").click();saved=JSON.parse(await raw(page));
+    assert.equal(saved.region,2);assert.equal(saved.campaign.phase,"open");assert.equal(await page.locator("#opening-world").isVisible(),true);
+    await page.locator("#scene-awaken").evaluate(el=>el.dispatchEvent(new MouseEvent("click",{bubbles:true})));
+    assert.equal(JSON.parse(await raw(page)).region,2,"repeated second-region claim cannot duplicate its reward");
+    assert.equal(await page.locator(".tile:visible").count(),0,"the scene remains default after the second claim");
   }));
 
+  await check("v3 connected kit moves to DARK atomically, reloads, undoes and returns LIVE",async()=>{
+    const kit=freshCampaign();assert.equal(repairGreenhouse(kit).ok,true);advance(kit,8);assert.equal(kit.campaign.phase,"mine-kit");
+    await withPage({width:390,height:844,initial:{[saveKey]:JSON.stringify(kit),[firstKey]:"yes"}},async page=>{
+      await page.locator("#scene-socket-8").click();
+      let saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"ridge-link");assert.equal(saved.campaign.starterMineSite,8);
+      await page.locator("#scene-socket-10").click();saved=JSON.parse(await raw(page));
+      assert.equal(saved.campaign.phase,"mine-disconnected");assert.equal(saved.campaign.mineKit,"earned");assert.equal(saved.campaign.starterMineSite,null);
+      assert.equal(saved.cells[8],Machine.Empty);assert.equal(saved.cells[10],Machine.Extractor);assert.equal(valid(saved),true);
+      await page.reload({waitUntil:"networkidle"});saved=JSON.parse(await raw(page));
+      assert.equal(saved.campaign.phase,"mine-disconnected");assert.equal(await page.locator("#scene-socket-10").isVisible(),true,
+        "the occupied DARK socket remains visible as the undo action after reload");
+      assert.equal(await page.locator("#scene-socket-10").textContent(),"UNDO · DARK");
+      assert.match(await page.locator("#scene-socket-10").getAttribute("aria-label"),/Undo the disconnected starter MINE/);
+      await page.locator("#scene-socket-10").click();saved=JSON.parse(await raw(page));
+      assert.equal(saved.campaign.phase,"mine-kit");assert.equal(saved.cells[10],Machine.Empty);assert.equal(saved.campaign.mineKit,"earned");
+      await page.locator("#scene-socket-8").click();await page.locator("#scene-socket-10").click();
+      saved=JSON.parse(await raw(page));assert.equal(saved.campaign.phase,"mine-disconnected");
+      await page.locator("#scene-socket-8").click();saved=JSON.parse(await raw(page));
+      assert.equal(saved.campaign.phase,"ridge-link");assert.equal(saved.campaign.mineKit,"redeemed");assert.equal(saved.campaign.starterMineSite,8);
+      assert.equal(saved.cells[8],Machine.Extractor);assert.equal(saved.cells[10],Machine.Empty);assert.equal(valid(saved),true);
+    });
+  });
+
+  await check("v3 rejects malformed relay and LIFE anchors while preserving original SAVE bytes",async()=>{
+    const broken=freshCampaign();broken.cells[13]=Machine.Empty;broken.cells[0]=Machine.Relay;
+    broken.cells[17]=Machine.Extractor;broken.campaign.phase="ridge-link";broken.campaign.mineKit="redeemed";broken.campaign.starterMineSite=17;
+    assert.equal(valid(broken),false);
+    const missingLife=freshCampaign();missingLife.cells[13]=Machine.Relay;missingLife.cells[17]=Machine.Extractor;missingLife.cells[18]=Machine.Relay;
+    missingLife.region=0;missingLife.restoration=25;missingLife.scrap=15;
+    missingLife.campaign={version:3,phase:"investment-choice",mineKit:"redeemed",firstInvestment:null,starterMineSite:17,ridgeRelay:true,fieldRelay:false};
+    assert.equal(valid(missingLife),true,"control fixture has connected anchor before mutation");
+    missingLife.cells[14]=Machine.Empty;missingLife.cells[0]=Machine.Restorer;
+    assert.equal(valid(missingLife),false);
+    for(const corrupt of [broken,missingLife]){
+      const original=JSON.stringify(corrupt);
+      await withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
+        assert.equal(await raw(page),original,"startup leaves malformed campaign bytes untouched");
+        assert.match((await status(page)).text,/existing save can't be read/i);
+        await build(page,Machine.Generator,19);await runAutosaveTicks(page,12);await pagehide(page);
+        assert.equal(await raw(page),original,"build and lifecycle save paths preserve malformed original bytes");
+      });
+    }
+  });
+
+  await check("v3 locked frontier rejects a save with no connected starter MINE and protects its bytes",async()=>{
+    const frontier=freshCampaign();repairGreenhouse(frontier);advance(frontier,8);place(frontier,8,Machine.Extractor);
+    while(frontier.scrap<4)advance(frontier,1);
+    assert.equal(place(frontier,18,Machine.Relay).ok,true);
+    while(frontier.campaign.phase!=="investment-choice")advance(frontier,1);
+    assert.equal(place(frontier,23,Machine.Extractor).ok,true);
+    while(frontier.campaign.phase!=="field-link")advance(frontier,1);
+    assert.equal(place(frontier,19,Machine.Relay).ok,true);
+    frontier.restoration=TARGET(frontier.region);assert.equal(claim(frontier).ok,true);
+    assert.equal(frontier.campaign.phase,"frontier-life");assert.equal(valid(frontier),true);
+    frontier.cells=frontier.cells.map(type=>type===Machine.Extractor?Machine.Empty:type);
+    frontier.cells[0]=Machine.Extractor;frontier.scrap=0;
+    assert.equal(valid(frontier),false,"a disconnected MINE cannot validate an otherwise immovable, unaffordable frontier");
+    const original=JSON.stringify(frontier);
+    await withPage({initial:{[saveKey]:original,[firstKey]:"yes"}},async page=>{
+      assert.equal(await raw(page),original,"invalid frontier save remains byte-for-byte untouched");
+      assert.match((await status(page)).text,/existing save can't be read/i);
+      await pagehide(page);await runAutosaveTicks(page,12);
+      assert.equal(await raw(page),original,"lifecycle and autosave do not overwrite the rejected save");
+      assert.equal(await page.evaluate(()=>window.__relightTest.writeEvents()),0);
+    });
+  });
 
   await check("POWER-first route recovers from zero scrap and opens MINE only at 25 actual points",()=>{
-    const choice=freshCampaign();choice.cells[13]=Machine.Relay;choice.cells[17]=Machine.Extractor;
+    const choice=freshVersionTwoCampaign();choice.cells[13]=Machine.Relay;choice.cells[17]=Machine.Extractor;
     choice.campaign={version:2,phase:"first-region",mineKit:"redeemed",firstInvestment:null};
     choice.region=0;choice.restoration=TARGET(0);choice.scrap=15;choice.savedAt=Math.floor(Date.now()/1000);
     assert.equal(claim(choice).ok,true);assert.equal(choice.scrap,65);
@@ -714,6 +892,46 @@ try{
     });
   });
 
+  await check("authentic v1 and v2 saves retain their first claim and version-specific MINE site",async()=>{
+    function readyLegacy(version){
+      const saved=freshVersionTwoCampaign();saved.campaign=version===1?
+        {version:1,phase:"first-region",mineKit:"redeemed"}:
+        {version:2,phase:"first-region",mineKit:"redeemed",firstInvestment:null};
+      saved.cells[13]=Machine.Relay;saved.cells[17]=Machine.Extractor;saved.scrap=100;
+      saved.restoration=TARGET(0);saved.region=0;saved.savedAt=Math.floor(Date.now()/1000);
+      assert.equal(valid(saved),true,"fixture reflects authentic version "+version+" fields");
+      return saved;
+    }
+    const v1=readyLegacy(1);
+    await withPage({width:390,height:844,initial:{[saveKey]:JSON.stringify(v1),[firstKey]:"yes"}},async page=>{
+      assert.equal(await page.locator("#scene-awaken").isVisible(),true,"v1 first-region claim remains available");
+      await page.locator("#scene-awaken").click();let saved=JSON.parse(await raw(page));
+      assert.equal(saved.campaign.version,1);assert.equal(saved.campaign.phase,"expansion");
+      await page.locator("#scene-action").click();saved=JSON.parse(await raw(page));
+      assert.equal(saved.cells[7],Machine.Extractor);assert.equal(saved.campaign.phase,"power");
+      await page.locator("#scene-action").click();saved=JSON.parse(await raw(page));
+      assert.equal(saved.cells[9],Machine.Generator);assert.equal(saved.campaign.phase,"open");
+      assert.equal(Object.hasOwn(saved.campaign,"ridgeRelay"),false);assert.equal(Object.hasOwn(saved.campaign,"fieldRelay"),false);
+    });
+    const v2=readyLegacy(2);
+    await withPage({width:390,height:844,initial:{[saveKey]:JSON.stringify(v2),[firstKey]:"yes"}},async page=>{
+      assert.equal(await page.locator("#scene-awaken").isVisible(),true,"v2 first-region claim remains available");
+      await page.locator("#scene-awaken").click();let saved=JSON.parse(await raw(page));
+      assert.equal(saved.campaign.phase,"investment-choice");assert.equal(saved.campaign.firstInvestment,null);
+      assert.match(await page.locator("#scene-choice-mine-detail").textContent(),/gross\/s.*net\/s.*LIFE/);
+      await page.locator("#scene-choice-mine").click();saved=JSON.parse(await raw(page));
+      assert.equal(saved.cells[7],Machine.Extractor,"v2 MINE remains at its original model site");
+      assert.equal(saved.cells[23],Machine.Empty,"the v3 ridge site is not used by v2");
+      assert.equal(saved.campaign.phase,"investment-growth");assert.equal(valid(saved),true);
+      await page.reload({waitUntil:"networkidle"});
+      for(let ticks=0;ticks<900&&(await page.locator("#opening-world").getAttribute("data-phase"))!=="investment-second";ticks+=20)
+        await runAutosaveTicks(page,20);
+      assert.equal(await page.locator("#opening-world").getAttribute("data-phase"),"investment-second");
+      await page.locator("#scene-action").click();saved=JSON.parse(await raw(page));
+      assert.equal(saved.cells[9],Machine.Generator);assert.equal(saved.campaign.phase,"open");assert.equal(valid(saved),true);
+    });
+  });
+
   await check("practice replay isolates every world write and returns the real saved world",()=>withPage({
     width:390,height:844,initial:{
       [saveKey]:savedWorld({cells:Array.from({length:25},(_,i)=>i===12?Machine.Core:Machine.Empty),scrap:77,restoration:10,region:2}),
@@ -732,6 +950,8 @@ try{
     assert.equal(await page.locator("#scene-awaken").isVisible(),true);
     await claimSceneRegion(page);
     await unlockCampaignPower(page);
+    await page.locator("#scene-advanced-toggle").click();
+    assert.equal(await page.locator(".sidebar").isVisible(),true,"advanced practice controls remain available on request");
     await page.locator("#upgrade-mining").click();
     await page.evaluate(()=>{window.confirm=()=>true;});
     await page.locator("#repair").click();
